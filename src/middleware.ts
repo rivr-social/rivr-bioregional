@@ -212,6 +212,7 @@ export async function middleware(request: NextRequest) {
 
   const forcePublicPrefixes = [
     "/api/mcp",
+    "/api/map-cultural",
     "/api/profile/",
     "/api/schema-schema",
     "/.well-known/mcp",

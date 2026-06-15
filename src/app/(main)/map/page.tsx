@@ -122,7 +122,7 @@ const FALLBACK_SCOPE_CENTERS: Record<string, [number, number]> = {
   longmont: [-105.1019, 40.1672],
 }
 
-type BioregionGroup = "terrestrial" | "hydro"
+type BioregionGroup = "terrestrial" | "hydro" | "cultural" | "nationstate"
 type LayerScope = "off" | "na" | "global"
 
 interface LayerSource {
@@ -190,6 +190,16 @@ const BIOREGION_LAYERS: Record<string, BioregionLayerConfig> = {
     minZoom: 12,
     labelMinSeparationDegrees: 0.03,
   },
+  frontRangeCultural: {
+    label: "Front Range Cultural", group: "cultural", stroke: "#7c3aed", fill: "#a855f7", strokeWidth: 1.5, fillAlpha: 0.22,
+    global: { id: "c-front-g", url: "/api/map-cultural/front-range", sourceLabel: "RIVR cultural anchors", available: true },
+    na:     { id: "c-front-n", url: "/api/map-cultural/front-range", sourceLabel: "RIVR cultural anchors", available: true },
+  },
+  nationstate: {
+    label: "Nationstate", group: "nationstate", stroke: "#6b7280", fill: "#9ca3af", strokeWidth: 1, fillAlpha: 0.12,
+    global: { id: "n-state-g", url: "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson", sourceLabel: "geo-countries", available: true },
+    na:     { id: "n-state-n", url: "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson", sourceLabel: "geo-countries", available: true },
+  },
   catchment: {
     label: "Catchment", group: "hydro", stroke: "#1e3a5f", fill: "#bfdbfe", strokeWidth: 1, fillAlpha: 0.25,
     na:     { id: "h-catch-n",  url: "",                                                 sourceLabel: "NHDPlus HR Catchments",    available: false },
@@ -202,6 +212,8 @@ const BIOREGION_LAYERS: Record<string, BioregionLayerConfig> = {
 
 const TERRESTRIAL_KEYS = Object.keys(BIOREGION_LAYERS).filter((k) => BIOREGION_LAYERS[k].group === "terrestrial")
 const HYDRO_KEYS = Object.keys(BIOREGION_LAYERS).filter((k) => BIOREGION_LAYERS[k].group === "hydro")
+const CULTURAL_KEYS = Object.keys(BIOREGION_LAYERS).filter((k) => BIOREGION_LAYERS[k].group === "cultural")
+const NATIONSTATE_KEYS = Object.keys(BIOREGION_LAYERS).filter((k) => BIOREGION_LAYERS[k].group === "nationstate")
 
 
 /**
@@ -1207,7 +1219,7 @@ export default function MapPage() {
             Bioregions
           </summary>
           <div className="mt-1.5 ml-4 space-y-2.5">
-            {([["Terrestrial", TERRESTRIAL_KEYS], ["Hydro", HYDRO_KEYS]] as const).map(([groupLabel, keys]) => (
+            {([["Terrestrial", TERRESTRIAL_KEYS], ["Hydro", HYDRO_KEYS], ["Cultural", CULTURAL_KEYS], ["Nationstate", NATIONSTATE_KEYS]] as const).map(([groupLabel, keys]) => (
               <div key={groupLabel}>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{groupLabel}</p>
                 <div className="space-y-1">
@@ -1436,7 +1448,7 @@ export default function MapPage() {
                 </button>
               </div>
               <div className="space-y-3">
-                {([["Terrestrial", TERRESTRIAL_KEYS], ["Hydro", HYDRO_KEYS]] as const).map(([groupLabel, keys]) => (
+                {([["Terrestrial", TERRESTRIAL_KEYS], ["Hydro", HYDRO_KEYS], ["Cultural", CULTURAL_KEYS], ["Nationstate", NATIONSTATE_KEYS]] as const).map(([groupLabel, keys]) => (
                   <div key={groupLabel}>
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{groupLabel}</p>
                     <div className="space-y-1.5">
