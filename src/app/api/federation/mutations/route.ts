@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { getInstanceConfig } from "@/lib/federation/instance-config";
 import { resolveHomeInstance } from "@/lib/federation/resolution";
 import {
   authorizeFederationRequest,
   bindAuthorizedFederationActor,
 } from "@/lib/federation-auth";
+import {
+  REMOTE_VIEWER_COOKIE_NAME,
+  decodeRemoteViewerSession,
+} from "@/lib/federation/remote-viewer-session";
+import {
+  resolveVisitorScope,
+  requiredVisitorCapability,
+  visitorCan,
+} from "@/lib/federation/visitor-scope";
 import { runWithFederationExecutionContext } from "@/lib/federation/execution-context";
 import { toggleFollowAgent, toggleJoinGroup } from "@/app/actions/interactions/social";
 import {
@@ -80,6 +90,8 @@ const KNOWN_MUTATION_TYPES = [
 
 type MutationRequestBody = {
   type?: string;
+  /** Alias discriminant used by some interaction payloads. */
+  action?: string;
   actorId?: string;
   targetAgentId?: string;
   payload?: unknown;
@@ -89,7 +101,52 @@ export async function POST(request: Request) {
   const config = getInstanceConfig();
 
   try {
-    const authorization = await authorizeFederationRequest(request);
+    // Read the remote-viewer cookie BEFORE peer-auth so a cookie-only visitor
+    // (cross-instance SSO landing, no peer credentials) can be identified and
+    // gated against the owner's capability policy. Peer-authorized and owner
+    // requests bypass this gate entirely.
+    const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET ?? "";
+    const cookieStore = await cookies();
+    const rawViewerCookie = cookieStore.get(REMOTE_VIEWER_COOKIE_NAME)?.value ?? undefined;
+    const remoteViewerSession = decodeRemoteViewerSession(rawViewerCookie, secret);
+
+    // If a valid cookie-visitor session is present AND the caller is NOT the
+    // instance owner, apply the visitor capability gate before any further work.
+    const isCookieVisitor =
+      !!remoteViewerSession &&
+      (!config.primaryAgentId ||
+        remoteViewerSession.actorId !== config.primaryAgentId);
+
+    if (isCookieVisitor) {
+      // Parse the body only far enough to read the action/type discriminant.
+      // We clone the request so the peer-auth path can still read the body.
+      let bodyForGate: MutationRequestBody;
+      try {
+        bodyForGate = (await request.clone().json()) as MutationRequestBody;
+      } catch {
+        bodyForGate = {};
+      }
+      const required = requiredVisitorCapability(bodyForGate.type ?? bodyForGate.action);
+      const scope = await resolveVisitorScope();
+      if (required === null || !visitorCan(scope, required)) {
+        return NextResponse.json(
+          {
+            success: false,
+            accepted: false,
+            error: `Visitor scope does not grant '${required ?? bodyForGate.type ?? bodyForGate.action}' on this instance.`,
+            errorCode: "VISITOR_CAPABILITY_DENIED",
+          },
+          { status: 403 },
+        );
+      }
+    }
+
+    // A cookie-only federated visitor authenticates as their own actor via the
+    // HMAC-signed, instance-bound remote-viewer cookie decoded above. Peer/
+    // admin/session auth remains the path for everything else.
+    const authorization = remoteViewerSession
+      ? { authorized: true as const, actorId: remoteViewerSession.actorId }
+      : await authorizeFederationRequest(request);
     if (!authorization.authorized) {
       return NextResponse.json(
         { success: false, error: authorization.reason ?? "Authentication required" },

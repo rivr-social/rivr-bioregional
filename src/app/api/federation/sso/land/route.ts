@@ -42,11 +42,16 @@ import {
   RemoteViewerSessionError,
 } from "@/lib/federation/remote-viewer-session";
 import { STATUS_INTERNAL_ERROR } from "@/lib/http-status";
+import {
+  VISITOR_CAPABILITIES,
+  resolveVisitorScope,
+} from "@/lib/federation/visitor-scope";
+import { recordFederatedVisit } from "@/lib/federation/visit-log";
 
 /** Default post-landing destination when no (valid) `next` is supplied. */
 const DEFAULT_NEXT = "/";
 
-/** Session lifetime for the minted viewer cookie, in seconds. */
+/** Session lifetime for the minted viewer cookie, in seconds (owner default). */
 const VIEWER_SESSION_LIFETIME_SEC = REMOTE_VIEWER_DEFAULT_LIFETIME_SEC;
 
 /** Constrain `next` to a safe same-document relative path. */
@@ -153,6 +158,22 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const claims = result.claims;
 
+  // Determine whether this visitor is the instance owner.
+  const isOwner =
+    !!config.primaryAgentId && claims.actorId === config.primaryAgentId;
+
+  // Resolve the owner-configured visitor policy. Degrades gracefully to the
+  // safe default when the table does not yet exist (pre-migration).
+  const scope = await resolveVisitorScope();
+
+  // When visitor auto-sign-in is disabled and the caller is NOT the owner,
+  // redirect unauthenticated — they can still log in normally.
+  if (!isOwner && !scope.enabled) {
+    return NextResponse.redirect(new URL(next, localRedirectBase), {
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
   if (!secret) {
     console.error("[federation/sso/land] AUTH_SECRET missing; cannot mint viewer cookie");
@@ -160,6 +181,11 @@ export async function GET(request: Request): Promise<NextResponse> {
       headers: { "Cache-Control": "no-store" },
     });
   }
+
+  // Owners keep the full default lifetime; visitors get the policy TTL.
+  const lifetimeSec = isOwner
+    ? VIEWER_SESSION_LIFETIME_SEC
+    : scope.ttlMinutes * 60;
 
   let cookieValue: string;
   try {
@@ -173,7 +199,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         instanceClass: claims.instanceClass,
         parentAgentId: claims.parentAgentId,
         authMethod: "federated-sso",
-        lifetimeSec: VIEWER_SESSION_LIFETIME_SEC,
+        lifetimeSec,
       },
       secret,
     );
@@ -195,7 +221,22 @@ export async function GET(request: Request): Promise<NextResponse> {
     secure: deriveIsHttps(request),
     sameSite: "lax",
     path: "/",
-    maxAge: VIEWER_SESSION_LIFETIME_SEC,
+    maxAge: lifetimeSec,
   });
+
+  // Best-effort visit recording (never blocks the landing).
+  if (scope.recordVisits) {
+    void recordFederatedVisit({
+      visitorActorId: claims.actorId,
+      isOwner,
+      homeBaseUrl: claims.homeBaseUrl,
+      globalIssuerBaseUrl: claims.globalIssuerBaseUrl ?? "",
+      landingPath: next,
+      visitorName: undefined,
+      grantedScope: isOwner ? [...VISITOR_CAPABILITIES] : scope.capabilities,
+      request,
+    });
+  }
+
   return response;
 }
