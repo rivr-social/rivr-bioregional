@@ -18,6 +18,12 @@ import { sql } from "drizzle-orm";
 
 // ── Deterministic UUIDs ─────────────────────────────────────────────────────
 
+// Region IDs (cultural bioregions — the home identity of a region instance).
+// A region is a place node (metadata.placeType "region"), NOT an organization
+// and NOT a watershed basin. The Front Range bioregion is distinct from the
+// South Platte River Basin (a watershed) it overlaps.
+const REGION_FRONT_RANGE = "90000000-0000-4000-8000-000000000001";
+
 // Basin IDs
 const BASIN_SOUTH_PLATTE = "b0000000-0000-4000-8000-000000000001";
 const BASIN_COLORADO_TX  = "b0000000-0000-4000-8000-000000000002";
@@ -123,6 +129,7 @@ const ALL_RESOURCE_IDS = [
 ];
 
 const ALL_AGENT_IDS = [
+  REGION_FRONT_RANGE,
   BASIN_SOUTH_PLATTE, BASIN_COLORADO_TX, BASIN_SF_BAY,
   LOCALE_BOULDER, LOCALE_AUSTIN, LOCALE_SF,
   GROUP_BASIC, GROUP_ORG, GROUP_RING,
@@ -163,25 +170,41 @@ export async function main() {
   // Clean ledger entries with our prefix
   await db.execute(sql`DELETE FROM ledger WHERE id::text LIKE 'f0000000-0000-4000-8000-%'`);
 
-  console.log("[seed] Seeding basins and locales...");
+  console.log("[seed] Seeding region, basins and locales...");
+
+  // ── Region (cultural bioregion — the home identity) ──
+  // The Front Range is a cultural bioregion, distinct from the South Platte
+  // River Basin (a watershed). It renders like a basin/region page, not an org.
+  await db.insert(agents).values({
+    id: REGION_FRONT_RANGE, name: "Front Range", type: "organization",
+    description: "The Front Range cultural bioregion — the communities along Colorado's Front Range, spanning the South Platte and Colorado Headwaters watersheds.",
+    visibility: "public", metadata: { placeType: "region" }, depth: 0,
+  }).onConflictDoNothing({ target: agents.id });
+  console.log(`  [region] Front Range`);
 
   // ── Basins ──
+  // South Platte is a child watershed of the Front Range bioregion; the other
+  // basins are standalone (their parent regions are not modeled in this seed).
   const basins = [
-    { id: BASIN_SOUTH_PLATTE, name: "South Platte Basin", description: "The South Platte River watershed along Colorado's Front Range.", huc6Code: "101900" },
-    { id: BASIN_COLORADO_TX, name: "Colorado River of Texas Basin", description: "The Colorado River of Texas watershed, stretching from Hill Country through Austin.", huc6Code: "120902" },
-    { id: BASIN_SF_BAY, name: "San Francisco Bay Basin", description: "The San Francisco Bay watershed encompassing the Bay Area's diverse communities.", huc6Code: "180500" },
+    { id: BASIN_SOUTH_PLATTE, name: "South Platte River Basin", description: "The South Platte River watershed along Colorado's Front Range.", huc6Code: "101900", parentId: REGION_FRONT_RANGE },
+    { id: BASIN_COLORADO_TX, name: "Colorado River of Texas Basin", description: "The Colorado River of Texas watershed, stretching from Hill Country through Austin.", huc6Code: "120902", parentId: null },
+    { id: BASIN_SF_BAY, name: "San Francisco Bay Basin", description: "The San Francisco Bay watershed encompassing the Bay Area's diverse communities.", huc6Code: "180500", parentId: null },
   ];
   for (const basin of basins) {
     await db.insert(agents).values({
       id: basin.id, name: basin.name, type: "organization", description: basin.description,
-      visibility: "public", metadata: { placeType: "basin", huc6Code: basin.huc6Code }, depth: 0,
+      visibility: "public",
+      parentId: basin.parentId ?? undefined,
+      pathIds: basin.parentId ? [basin.parentId] : undefined,
+      metadata: { placeType: "basin", huc6Code: basin.huc6Code },
+      depth: basin.parentId ? 1 : 0,
     }).onConflictDoNothing({ target: agents.id });
     console.log(`  [basin] ${basin.name}`);
   }
 
   // ── Locales ──
   const locales = [
-    { id: LOCALE_BOULDER, name: "Boulder", description: "Where the Rockies meet the plains — Rivr's first activated Commons.", location: "Boulder, CO", basinId: BASIN_SOUTH_PLATTE, isCommons: true, slug: "boulder" },
+    { id: LOCALE_BOULDER, name: "Boulder", description: "Where the Rockies meet the plains — Rivr's first activated Commons.", location: "Boulder, CO", basinId: REGION_FRONT_RANGE, isCommons: true, slug: "boulder" },
     { id: LOCALE_AUSTIN, name: "Austin", description: "The Live Music Capital — building urban resilience along the Colorado River.", location: "Austin, TX", basinId: BASIN_COLORADO_TX, isCommons: false, slug: "austin" },
     { id: LOCALE_SF, name: "San Francisco", description: "Innovation hub on the Bay — exploring cooperative platforms.", location: "San Francisco, CA", basinId: BASIN_SF_BAY, isCommons: false, slug: "san-francisco" },
   ];
@@ -727,7 +750,7 @@ export async function main() {
   }
 
   console.log(`[seed] Done.`);
-  console.log(`  3 basins, 3 locales`);
+  console.log(`  1 region (Front Range), 3 basins, 3 locales`);
   console.log(`  5 seed users`);
   console.log(`  3 groups: Boulder Trail Runners (basic), Front Range Food Co-op (org), Watershed Stewards Ring (ring)`);
   console.log(`  3 subgroups under the org`);

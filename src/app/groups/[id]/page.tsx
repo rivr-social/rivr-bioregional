@@ -6,7 +6,7 @@
  * modals, and wired-in interactive components).
  */
 import Link from "next/link"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import type { Metadata } from "next"
 import { MessageSquare, Settings } from "lucide-react"
 import { auth } from "@/auth"
@@ -45,6 +45,18 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
 
   if (!detail) {
     notFound()
+  }
+
+  // Place nodes (basins, regions, locales/chapters) are NOT groups/orgs — they
+  // must never render through the org tab UI (Governance/Stake/Treasury). If a
+  // place-typed agent is reached via /groups/[id], redirect to its canonical
+  // place page so a region renders like a basin page, not an organization.
+  const placeType = (() => {
+    const value = ((detail.group.metadata ?? {}) as Record<string, unknown>).placeType
+    return typeof value === "string" ? value.toLowerCase() : null
+  })()
+  if (placeType) {
+    redirect(placeType === "chapter" || placeType === "locale" ? `/locales/${id}` : `/basins/${id}`)
   }
 
   const group = agentToGroup(detail.group)
