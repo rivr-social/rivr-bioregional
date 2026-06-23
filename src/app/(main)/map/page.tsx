@@ -523,7 +523,7 @@ export default function MapPage() {
     chapters: group.chapterTags || [],
     location: group.location,
     members: group.members || [],
-    geo: geocodedGeo[group.id] || null,
+    geo: group.geo || geocodedGeo[group.id] || null,
     modelUrl: group.modelUrl,
   })), [hookGroups, geocodedGeo])
 
