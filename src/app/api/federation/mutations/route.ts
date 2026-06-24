@@ -5,6 +5,7 @@ import { resolveHomeInstance } from "@/lib/federation/resolution";
 import {
   authorizeFederationRequest,
   bindAuthorizedFederationActor,
+  resolveLocalActorId,
 } from "@/lib/federation-auth";
 import {
   REMOTE_VIEWER_COOKIE_NAME,
@@ -182,6 +183,17 @@ export async function POST(request: Request) {
       );
     }
 
+    // Normalize the peer-supplied actor id to this instance's local agent id.
+    // Under peer-secret (server-to-server) trust the bound actorId is the
+    // FORWARDING instance's local id for the human; downstream authority checks
+    // (e.g. hasGroupWriteAccess for post-as-group) run against THIS instance's
+    // graph and must see the receiver-local id. The mapping comes from
+    // federation_entity_map (read-only — never minted here). Unmapped actors
+    // pass through unchanged.
+    const effectiveActorId = authorization.peerTrusted
+      ? await resolveLocalActorId(authorization.peerNodeId, actorBinding.actorId)
+      : actorBinding.actorId;
+
     // Peer-side authority enforcement:
     // Mutations are sensitive operations. If the actor's home has been revoked
     // (or superseded by a successor claim), reject before dispatching. This
@@ -224,7 +236,7 @@ export async function POST(request: Request) {
       `[federation/mutations] Executing mutation from ${remoteInstanceSlug} (${remoteInstanceId}):`,
       {
         type,
-        actorId: actorBinding.actorId,
+        actorId: effectiveActorId,
         targetAgentId,
         payloadKeys: payload && typeof payload === "object" ? Object.keys(payload as object) : [],
       },
@@ -252,7 +264,7 @@ export async function POST(request: Request) {
 
     const result = (await dispatchLegacyMutation(
       type,
-      actorBinding.actorId,
+      effectiveActorId,
       targetAgentId,
       payload,
     )) as { success?: boolean; accepted?: boolean; error?: string; [key: string]: unknown };
