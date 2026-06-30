@@ -187,3 +187,31 @@ export async function createDirectMessageRoom(params: {
 
   return { roomId: result.room_id };
 }
+
+/**
+ * Lists the current members of a Matrix room via the Synapse Admin API.
+ *
+ * This is the CANONICAL membership view for a room — it reflects actual
+ * Synapse state, not any client-writable application mirror. It is used to
+ * authorize room-membership mutations against verified membership
+ * (EVT-SEC-001): a caller may only drive a privileged admin force-join into a
+ * direct room they are themselves a canonical member of.
+ *
+ * @param roomId - The Matrix room ID (must start with `!`).
+ * @returns Array of full Matrix user IDs that are members of the room. Returns
+ *          an empty array if the admin API returns a non-array members field.
+ * @throws Error if `roomId` is malformed (defends the admin API path against
+ *         injection of arbitrary strings).
+ */
+export async function getRoomMembers(roomId: string): Promise<string[]> {
+  if (!roomId.startsWith("!")) {
+    throw new Error(`Invalid Matrix roomId: ${roomId}`);
+  }
+  const result = await synapseAdminRequest(
+    `/_synapse/admin/v1/rooms/${encodeURIComponent(roomId)}/members`,
+    { method: "GET" }
+  );
+  const members = (result?.members as unknown) ?? [];
+  if (!Array.isArray(members)) return [];
+  return members.filter((m): m is string => typeof m === "string");
+}
