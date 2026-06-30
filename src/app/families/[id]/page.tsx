@@ -270,8 +270,6 @@ export default async function FamilyPage({ params }: { params: Promise<{ id: str
       memberCount={members.length || family.memberCount || 0}
       tags={family.chapterTags ?? []}
       isAdmin={canManageStripe}
-      groupType={String(meta.groupType ?? "family")}
-      commissionBps={typeof meta.commissionBps === "number" ? meta.commissionBps as number : undefined}
     >
       <FamilyActions
         familyId={family.id}
