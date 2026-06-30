@@ -242,8 +242,6 @@ export default async function RingPage({ params }: { params: Promise<{ id: strin
       memberCount={members.length || ring.memberCount || 0}
       tags={ring.chapterTags ?? []}
       isAdmin={canManageStripe}
-      groupType={String(meta.groupType ?? "ring")}
-      commissionBps={typeof meta.commissionBps === "number" ? meta.commissionBps as number : undefined}
     >
       <RingActions
         ringId={ring.id}

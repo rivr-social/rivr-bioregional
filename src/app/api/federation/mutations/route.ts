@@ -5,7 +5,6 @@ import { resolveHomeInstance } from "@/lib/federation/resolution";
 import {
   authorizeFederationRequest,
   bindAuthorizedFederationActor,
-  resolveLocalActorId,
 } from "@/lib/federation-auth";
 import {
   REMOTE_VIEWER_COOKIE_NAME,
@@ -179,7 +178,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const actorBinding = bindAuthorizedFederationActor(authorization, actorId);
+    // Strict actor binding: under peer-secret (server-to-server) trust the
+    // requested actorId is verified against a federation_entity_map row for the
+    // authenticated peer (no longer accepted on the shared secret alone — F1).
+    // The bound actorId is already this instance's receiver-LOCAL id (path 2b
+    // resolves the forwarder's id to the local one), so downstream authority
+    // checks (e.g. hasGroupWriteAccess for post-as-group) run against THIS
+    // instance's graph directly. Unmapped actors are rejected, not trusted.
+    const actorBinding = await bindAuthorizedFederationActor(authorization, actorId);
     if (!actorBinding.authorized || !actorBinding.actorId) {
       return NextResponse.json(
         { success: false, error: actorBinding.reason ?? "Actor authorization failed" },
@@ -187,16 +193,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // Normalize the peer-supplied actor id to this instance's local agent id.
-    // Under peer-secret (server-to-server) trust the bound actorId is the
-    // FORWARDING instance's local id for the human; downstream authority checks
-    // (e.g. hasGroupWriteAccess for post-as-group) run against THIS instance's
-    // graph and must see the receiver-local id. The mapping comes from
-    // federation_entity_map (read-only — never minted here). Unmapped actors
-    // pass through unchanged.
-    const effectiveActorId = authorization.peerTrusted
-      ? await resolveLocalActorId(authorization.peerNodeId, actorBinding.actorId)
-      : actorBinding.actorId;
+    const effectiveActorId = actorBinding.actorId;
 
     // Peer-side authority enforcement:
     // Mutations are sensitive operations. If the actor's home has been revoked
@@ -404,7 +401,8 @@ async function dispatchLegacyMutation(
       case "createEventResource":
         return createEventResource(record as Parameters<typeof createEventResource>[0]);
       // Cross-instance resource UPDATE/DELETE by a peer admin. The actor was
-      // already normalized to this instance's local id (resolveLocalActorId)
+      // already verified + normalized to this instance's local id by
+      // bindAuthorizedFederationActor (strict entity-map binding, path 2b)
       // and the whole switch runs in runWithFederationExecutionContext, so
       // updateResource/deleteResource's own canModifyResource → hasGroupWriteAccess
       // gate authorizes the resolved actor exactly like a local session.

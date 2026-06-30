@@ -485,7 +485,7 @@ export function GroupTabsClient({
                   )}
                 </div>
               ))}
-              <Link href={`/groups/${groupId}/settings`} className="inline-flex text-sm text-primary hover:underline">
+              <Link href={`/groups/${groupId}/settings?tab=memberships`} className="inline-flex text-sm text-primary hover:underline">
                 Manage membership plans
               </Link>
             </CardContent>
