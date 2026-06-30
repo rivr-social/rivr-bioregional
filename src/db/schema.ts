@@ -730,6 +730,39 @@ export const federationEvents = pgTable(
 );
 
 /**
+ * Single-use SSO assertion nonces (F3 — SSO replay protection, AUTH-SEC-002).
+ *
+ * A signed cross-instance SSO assertion already carries a `nonce` and an `exp`
+ * (see `src/lib/federation/sso-assertion.ts`); verification proves the
+ * assertion is authentic and in-window, but authenticity alone does not stop
+ * the SAME assertion from being presented twice inside its <=5-minute validity
+ * window (a captured `/sso/land` URL, a replayed `remote-auth` POST body). The
+ * SSO accept paths burn the nonce here BEFORE minting the `rivr_remote_viewer`
+ * cookie, and the first presentation wins.
+ *
+ * Rows are keyed by `(issuer, nonce)` so two distinct issuers can never shadow
+ * each other's nonces. `expiresAt` mirrors the assertion's `exp` so a
+ * background sweep can prune the table without affecting correctness — the
+ * unique constraint, not the TTL, is what enforces single use within the
+ * validity window. Home-authority / per-instance; never federated.
+ */
+export const ssoNonces = pgTable(
+  'sso_nonces',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    issuer: text('issuer').notNull(),
+    nonce: text('nonce').notNull(),
+    actorId: uuid('actor_id'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('sso_nonces_issuer_nonce_idx').on(table.issuer, table.nonce),
+    index('sso_nonces_expires_at_idx').on(table.expiresAt),
+  ]
+);
+
+/**
  * Relations
  */
 
@@ -1480,6 +1513,8 @@ export type FederationEventRecord = typeof federationEvents.$inferSelect;
 export type NewFederationEventRecord = typeof federationEvents.$inferInsert;
 export type FederationEntityMapRecord = typeof federationEntityMap.$inferSelect;
 export type NewFederationEntityMapRecord = typeof federationEntityMap.$inferInsert;
+export type SsoNonceRecord = typeof ssoNonces.$inferSelect;
+export type NewSsoNonceRecord = typeof ssoNonces.$inferInsert;
 
 export type Subscription = typeof subscriptions.$inferSelect;
 export type NewSubscription = typeof subscriptions.$inferInsert;
