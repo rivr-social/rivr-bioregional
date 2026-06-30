@@ -1181,7 +1181,21 @@ async function handleOfferingPurchaseSucceeded(pi: Stripe.PaymentIntent) {
 
   if (existingTx) return;
 
-  const payoutEligibleAt = await getPaymentIntentPayoutEligibleAt(pi.id);
+  // Rail gate (COM-DSN-002): a destination charge has already moved real funds
+  // to the seller's Connect account (createProvidePaymentAction sets
+  // transfer_data + settlementRail='connect'). Crediting the seller's internal
+  // balance/capital on top would mint unbacked in-platform currency — spendable
+  // elsewhere in the wallet system. So on the externally-settled rail we record
+  // an audit-only ledger + wallet_transactions row and skip ALL internal
+  // crediting. Only a platform-capital offering (no Connect destination, RIVR
+  // collected the full charge) settles internally. `pi.transfer_data.destination`
+  // is the authoritative signal — it reflects how Stripe actually routed the money.
+  const externallySettled =
+    Boolean(pi.transfer_data?.destination) || metadata.settlementRail === 'connect';
+
+  const payoutEligibleAt = externallySettled
+    ? null
+    : await getPaymentIntentPayoutEligibleAt(pi.id);
   const sellerWallet = await getSettlementWalletForAgent(sellerId);
   const platformWallet = await getPlatformWallet();
   const sellerCreditCents = Number(metadata.subtotalCents ?? 0);
@@ -1197,7 +1211,11 @@ async function handleOfferingPurchaseSucceeded(pi: Stripe.PaymentIntent) {
     if (existingInTx) return;
 
     await incrementListingInventory(tx, offeringId, requestedQuantity, bookingSelection);
-    await lockWallets(tx, [sellerWallet.id, platformWallet.id]);
+    // Only lock the wallets we are about to credit. On the externally-settled
+    // (Connect) rail no internal balances move, so no locks are taken.
+    if (!externallySettled) {
+      await lockWallets(tx, [sellerWallet.id, platformWallet.id]);
+    }
 
     // Create ledger entry for the purchase
     const [ledgerEntry] = await tx
@@ -1244,6 +1262,12 @@ async function handleOfferingPurchaseSucceeded(pi: Stripe.PaymentIntent) {
       },
     });
 
+    // Internal settlement runs ONLY on the platform-capital rail. On the
+    // externally-settled (Connect destination) rail the money already reached
+    // the seller's bank, so the ledger + marketplace_purchase wallet_transactions
+    // rows above are the audit trail and we credit NO internal balance/capital
+    // for either the seller or the platform fee (COM-DSN-002).
+    if (!externallySettled) {
     await tx
       .update(wallets)
       .set({
@@ -1324,6 +1348,7 @@ async function handleOfferingPurchaseSucceeded(pi: Stripe.PaymentIntent) {
         },
       });
     }
+    } // end internal-rail settlement (COM-DSN-002)
 
     // Create notification for seller
     await tx.insert(ledger).values({
