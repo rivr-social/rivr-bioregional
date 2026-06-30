@@ -23,16 +23,15 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import dynamic from "next/dynamic"
-import { MapPin, Calendar, Users, Search, X, ChevronDown, Layers, Mountain, Building2, Type, View, Clock } from "lucide-react"
-import Image from "next/image"
+import { Search, X, ChevronDown, Layers, Mountain, Building2, Type, View, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import type { MapItem } from "@/components/modules/map"
+import { MapCard } from "@/components/map-card"
 import { useAppContext } from "@/contexts/app-context"
 import { useLocalesAndBasins, useEvents, useGroups, usePosts, useMarketplace } from "@/lib/hooks/use-graph-data"
 
@@ -1133,21 +1132,6 @@ export default function MapPage() {
     }
   }
 
-  /**
-   * Formats an ISO-ish date string for compact card display.
-   *
-   * @param dateString - Date input for event cards.
-   * @returns Localized short date string.
-   */
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    })
-  }
-
   return (
     <div className="h-[calc(100dvh-8rem)] overflow-hidden flex flex-col">
       {/* ── Desktop controls header (hidden on mobile) ── */}
@@ -1578,53 +1562,12 @@ export default function MapPage() {
           ) : (
             <div className="pointer-events-auto flex gap-2 overflow-x-auto no-scrollbar pb-1">
               {layerFilteredItems.map((item) => (
-                <Link
-                  href={item.url}
+                <MapCard
                   key={item.id}
-                  className="min-w-[200px] max-w-[240px] md:min-w-[280px] md:max-w-[320px] rounded-md border bg-card hover:border-primary transition-colors overflow-hidden flex shrink-0 shadow"
+                  item={item}
                   onMouseEnter={() => setHoveredItem(item.id)}
                   onMouseLeave={() => setHoveredItem(null)}
-                >
-                  <div className="relative h-20 w-20 md:h-24 md:w-24 shrink-0">
-                    <Image src={item.image || "/placeholder-event.jpg"} alt={item.name} fill className="object-cover" />
-                    <div
-                      className={cn(
-                        "absolute top-2 left-2 rounded-full w-6 h-6 flex items-center justify-center",
-                        item.type === "event"
-                          ? "bg-primary"
-                          : item.type === "group"
-                            ? "bg-blue-500"
-                            : item.type === "post"
-                              ? "bg-emerald-500"
-                              : "bg-amber-500",
-                      )}
-                    >
-                      {item.type === "event" ? <Calendar className="h-3 w-3 text-white" /> : null}
-                      {item.type === "group" ? <Users className="h-3 w-3 text-white" /> : null}
-                      {item.type === "post" ? <MapPin className="h-3 w-3 text-white" /> : null}
-                      {item.type === "offering" ? <MapPin className="h-3 w-3 text-white" /> : null}
-                    </div>
-                  </div>
-                  <div className="p-2 min-w-0">
-                    <h3 className="font-medium text-sm truncate">{item.name}</h3>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                      <MapPin className="h-3 w-3 shrink-0" />
-                      <p className="truncate">{(item.location as Record<string, unknown> | undefined)?.address as string || "Unknown location"}</p>
-                    </div>
-                    {item.type === "event" && "timeframe" in item ? (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                        <Calendar className="h-3 w-3 shrink-0" />
-                        <p>{formatDate((item.timeframe as { start?: string }).start || "2024-01-01T00:00:00.000Z")}</p>
-                      </div>
-                    ) : null}
-                    {item.type === "group" && "memberCount" in item ? (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                        <Users className="h-3 w-3 shrink-0" />
-                        <p>{item.memberCount || 0} members</p>
-                      </div>
-                    ) : null}
-                  </div>
-                </Link>
+                />
               ))}
             </div>
           )}

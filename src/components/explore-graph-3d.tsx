@@ -32,6 +32,7 @@ import {
   resourceToMarketplaceListing,
 } from "@/lib/graph-adapters"
 import { Button } from "@/components/ui/button"
+import { MapCard, type MapCardItem } from "@/components/map-card"
 import { RotateCcw, ChevronLeft } from "lucide-react"
 import {
   GRAPH_CATEGORY_COLORS,
@@ -126,6 +127,38 @@ function getNodeId(node: string | GraphNode): string {
   return typeof node === "object" ? node.id : node
 }
 
+/**
+ * Canonical page route for a graph node type. Centralizes href construction so
+ * people resolve to `/profile/...` (there is no `/people/[id]` route) and ledger
+ * objects no longer fall back to invented `/${objectType}/${id}` paths.
+ */
+function hrefForNodeType(type: NodeType, id: string): string {
+  switch (type) {
+    case NODE_TYPE.PERSON:
+      return `/profile/${id}`
+    case NODE_TYPE.GROUP:
+      return `/groups/${id}`
+    case NODE_TYPE.EVENT:
+      return `/events/${id}`
+    case NODE_TYPE.POST:
+      return `/posts/${id}`
+    case NODE_TYPE.OFFERING:
+      return `/marketplace/${id}`
+    default:
+      return `/profile/${id}`
+  }
+}
+
+/** Adapts a graph node into the normalized shape rendered by {@link MapCard}. */
+function nodeToMapCardItem(node: GraphNode): MapCardItem {
+  return {
+    id: node.id,
+    type: node.type,
+    name: node.label,
+    url: node.href,
+  }
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 /** Cache for loaded GLB models keyed by URL to avoid redundant fetches. */
@@ -141,6 +174,9 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
   // Focus state: when a node is clicked, dim unrelated nodes/edges
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null)
   const focusedNodeIdRef = useRef<string | null>(null)
+
+  // Selected node: drives the MapCard overlay (click node → card → object page).
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
 
   // Keep ref in sync for use inside 3d-force-graph callbacks
   useEffect(() => {
@@ -194,11 +230,12 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
       for (const entry of entries) {
         if (!nodeIds.has(entry.subjectId)) {
           nodeIds.add(entry.subjectId)
+          const subjType = typeMap[entry.subjectType] ?? NODE_TYPE.PERSON
           nodes.push({
             id: entry.subjectId,
             label: entry.subjectName,
-            type: typeMap[entry.subjectType] ?? NODE_TYPE.PERSON,
-            href: entry.subjectType === "person" ? `/people/${entry.subjectId}` : `/groups/${entry.subjectId}`,
+            type: subjType,
+            href: hrefForNodeType(subjType, entry.subjectId),
           })
         }
 
@@ -209,7 +246,7 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
             id: entry.objectId,
             label: entry.objectName ?? "Unknown",
             type: objType,
-            href: objType === NODE_TYPE.PERSON ? `/people/${entry.objectId}` : `/${entry.objectType ?? "agents"}/${entry.objectId}`,
+            href: hrefForNodeType(objType, entry.objectId),
           })
         }
 
@@ -250,10 +287,11 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
   }, [])
 
   // Data from hooks
-  const { data: feedData, state: feedState } = useHomeFeed(100, selectedChapter)
+  const { data: feedData, state: feedState, error: feedError } = useHomeFeed(100, selectedChapter)
   const { posts, state: postsState } = usePosts(100, selectedChapter)
 
   const isLoading = feedState === "loading" || postsState === "loading" || isLedgerLoading
+  const hasError = feedState === "error" || postsState === "error"
 
   // Navigation state
   const [navStack, setNavStack] = useState<NavigationEntry[]>([
@@ -279,7 +317,7 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
         id: person.id,
         label: person.name || person.username || "Unknown",
         type: NODE_TYPE.PERSON,
-        href: person.profileHref || `/people/${person.id}`,
+        href: person.profileHref || hrefForNodeType(NODE_TYPE.PERSON, person.id),
       })
     }
 
@@ -337,6 +375,29 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
         links.push({ id: linkId, source: listing.id, target: listing.seller.id })
       }
     }
+
+    // Base RELATIONSHIP edges: connect each group to its members/admins so the
+    // graph loads as a connected web instead of a disconnected cloud of
+    // post→author / listing→seller stars (E1). Only links to nodes already in
+    // the feed are added; missing members simply don't draw an edge.
+    const linkIds = new Set(links.map((l) => l.id))
+    for (const group of feedData.groups) {
+      const relatedIds = new Set<string>([
+        ...(Array.isArray(group.members) ? group.members : []),
+        ...(Array.isArray(group.adminIds) ? group.adminIds : []),
+      ])
+      for (const memberId of relatedIds) {
+        if (!nodeIds.has(memberId)) continue
+        const linkId = makeLinkId(group.id, memberId)
+        if (linkIds.has(linkId)) continue
+        linkIds.add(linkId)
+        links.push({ id: linkId, source: group.id, target: memberId, label: "member" })
+      }
+    }
+
+    // TODO(E3-federation-edges): the graph is built from the local DB only, so
+    // federated peers (e.g. Spirit of the Front Range) appear isolated or not at
+    // all. Surfacing peer nodes + cross-instance edges is a separate feature.
 
     return { baseNodes: nodes, baseLinks: links }
   }, [feedData, posts])
@@ -422,7 +483,7 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
                   id: user.id,
                   label: user.name || user.username || "Unknown",
                   type: NODE_TYPE.PERSON,
-                  href: user.profileHref || `/people/${user.id}`,
+                  href: user.profileHref || hrefForNodeType(NODE_TYPE.PERSON, user.id),
                 })
               }
               newLinks.push({ id: makeLinkId(node.id, user.id), source: node.id, target: user.id })
@@ -563,11 +624,13 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
 
   const handleBack = useCallback(() => {
     setFocusedNodeId(null)
+    setSelectedNode(null)
     setNavStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev))
   }, [])
 
   const handleReset = useCallback(() => {
     setFocusedNodeId(null)
+    setSelectedNode(null)
     setNavStack([{ centerId: null, label: "Overview" }])
     setExpandedNodes(new Map())
     setExpandedLinks(new Map())
@@ -853,11 +916,13 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
             // Second click on same focused node -- expand/navigate
             expandNodeRef.current(n)
             setFocusedNodeId(null)
+            setSelectedNode(null)
             return
           }
 
-          // First click -- focus and fly camera to it
+          // First click -- focus, open the entity card, and fly camera to it
           setFocusedNodeId(n.id)
+          setSelectedNode(n)
 
           // Fly camera to center on this node
           const distance = 120
@@ -903,6 +968,7 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
 
         .onBackgroundClick(() => {
           setFocusedNodeId(null)
+          setSelectedNode(null)
           graph.zoomToFit(600, 50)
         })
 
@@ -981,6 +1047,7 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setFocusedNodeId(null)
+        setSelectedNode(null)
         const graph = graphRef.current
         if (graph) graph.zoomToFit(400, 60)
       }
@@ -1005,6 +1072,19 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
     return (
       <div className="flex items-center justify-center py-20 text-muted-foreground">
         Loading graph data...
+      </div>
+    )
+  }
+
+  // Surface a load failure as a VISIBLE error state, distinct from the empty
+  // "No data available" state below (E1).
+  if (hasError && filteredNodes.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-1 py-20 px-4 text-center">
+        <p className="text-sm font-medium text-destructive">Couldn&apos;t load the graph.</p>
+        <p className="max-w-md text-xs text-destructive/80">
+          {feedError ?? "A data source failed to load. Try resetting the view or reloading."}
+        </p>
       </div>
     )
   }
@@ -1104,11 +1184,18 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
       </div>
 
       {/* 3D Graph canvas */}
-      <div
-        ref={containerRef}
-        className="relative w-full rounded-lg border overflow-hidden"
-        style={{ minHeight: 400, maxHeight: 500, background: SCENE_BG_COLOR }}
-      />
+      <div className="relative w-full">
+        <div
+          ref={containerRef}
+          className="w-full rounded-lg border overflow-hidden"
+          style={{ minHeight: 400, maxHeight: 500, background: SCENE_BG_COLOR }}
+        />
+        {selectedNode && (
+          <div className="absolute bottom-3 left-1/2 z-20 -translate-x-1/2 pointer-events-auto">
+            <MapCard item={nodeToMapCardItem(selectedNode)} onClose={() => setSelectedNode(null)} />
+          </div>
+        )}
+      </div>
 
       <p className="text-xs text-muted-foreground text-center">
         Click a node to focus, click again to expand. Drag to orbit. Scroll to zoom. Press Escape to reset view.
