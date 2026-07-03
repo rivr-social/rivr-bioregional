@@ -112,7 +112,7 @@ export function NestedGroups({ parentGroupId, isCreator, isAdmin }: NestedGroups
           <div className="space-y-3">
             {childGroups.map((group) => (
               <Link href={`/groups/${group.id}`} key={group.id}>
-                <div className="flex items-center justify-between p-3 rounded-md border hover:bg-gray-50 cursor-pointer">
+                <div className="flex items-center justify-between p-3 rounded-md border hover:bg-muted/50 cursor-pointer">
                   <div className="flex items-center">
                     <Avatar className="h-10 w-10 mr-3">
                       <AvatarImage src={group.avatar || "/placeholder.svg"} alt={group.name} />
