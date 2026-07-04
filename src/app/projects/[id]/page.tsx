@@ -170,6 +170,9 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const { agent, project, ownerId, owner, children, activity } = data
   const members = children.filter((child) => child.type === "person")
 
+  // Stored project timeframe range (datetime-local strings), fed to the edit range picker.
+  const projectTimeframe = (agent.metadata ?? {})["timeframe"] as { start?: string; end?: string } | undefined
+
   // Derive status display values.
   const statusKey = project.status || "active"
   const progressValue = STATUS_PROGRESS[statusKey] ?? 50
@@ -261,6 +264,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
             projectName={project.name}
             projectDescription={project.description}
             ownerId={ownerId}
+            timeframeStart={typeof (projectTimeframe as { start?: string } | undefined)?.start === "string" ? (projectTimeframe as { start?: string }).start : null}
+            timeframeEnd={typeof (projectTimeframe as { end?: string } | undefined)?.end === "string" ? (projectTimeframe as { end?: string }).end : null}
           />
         </CardContent>
       </Card>
