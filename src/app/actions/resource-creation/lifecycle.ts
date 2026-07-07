@@ -1,6 +1,7 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { PUBLIC_POST_FEED_CACHE_TAG } from "@/lib/cache-tags";
 import { db } from "@/db";
 import {
   agents,
@@ -139,6 +140,7 @@ export async function updateResource(input: UpdateResourceInput): Promise<Action
       });
 
       revalidatePath("/");
+      revalidateTag(PUBLIC_POST_FEED_CACHE_TAG);
       revalidatePath(`/events/${input.resourceId}`);
       revalidatePath(`/posts/${input.resourceId}`);
       revalidatePath(`/marketplace/${input.resourceId}`);
@@ -375,6 +377,7 @@ export async function deleteResource(resourceId: string): Promise<ActionResult> 
         });
 
         revalidatePath("/");
+        revalidateTag(PUBLIC_POST_FEED_CACHE_TAG);
         revalidatePath("/marketplace");
         revalidatePath(`/marketplace/${resourceId}`);
         revalidatePath("/events");
@@ -406,6 +409,7 @@ export async function deleteResource(resourceId: string): Promise<ActionResult> 
       });
 
       revalidatePath("/");
+      revalidateTag(PUBLIC_POST_FEED_CACHE_TAG);
       revalidatePath("/marketplace");
       revalidatePath("/events");
       revalidatePath("/projects");
@@ -708,6 +712,7 @@ export async function createLiveClassAction(input: {
         });
 
         revalidatePath("/");
+        revalidateTag(PUBLIC_POST_FEED_CACHE_TAG);
         revalidatePath("/create");
         revalidatePath("/projects");
         await revalidateOwnerPaths(input.groupId);
@@ -1167,6 +1172,7 @@ export async function createProjectResource(input: {
     }
 
     revalidatePath("/");
+    revalidateTag(PUBLIC_POST_FEED_CACHE_TAG);
     revalidatePath("/create");
     revalidatePath("/projects");
     revalidatePath("/groups");
