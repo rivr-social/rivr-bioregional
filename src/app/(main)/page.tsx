@@ -1,5 +1,5 @@
 import { Suspense } from "react"
-import { fetchHomeFeed, fetchBasins, fetchLocales, fetchPublicResources } from "@/app/actions/graph"
+import { fetchHomeFeed, fetchBasins, fetchLocales, fetchPublicPostResources } from "@/app/actions/graph"
 import {
   agentToUser,
   agentToGroup,
@@ -87,17 +87,14 @@ async function HomeFeedLoader() {
 
 async function loadHomeFeed() {
   try {
-    const [feed, basinAgents, localeAgents, publicResources] = await Promise.all([
+    const [feed, basinAgents, localeAgents, postResources] = await Promise.all([
       fetchHomeFeed(50),
       fetchBasins(),
       fetchLocales(),
-      fetchPublicResources(300),
+      // Post-type filter is pushed into SQL (getPublicPostResources) — no JS
+      // post-discrimination needed, and the over-fetch drops 300 → 60.
+      fetchPublicPostResources(60),
     ])
-
-    const postResources = publicResources.filter((r) => {
-      const meta = (r.metadata ?? {}) as Record<string, unknown>
-      return meta.entityType === "post" || r.type === "post" || r.type === "note"
-    })
 
     return {
       people: feed.people.map(agentToUser),
