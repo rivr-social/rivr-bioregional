@@ -70,7 +70,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  outputFileTracingRoot: path.join(__dirname, "../../"),
+  outputFileTracingRoot: path.join(__dirname, "./"),  // single-repo build: trace within /app for standalone (was monorepo "../../")
   images: {
     dangerouslyAllowSVG: true,
     remotePatterns: [
