@@ -80,7 +80,7 @@ vi.mock('@/db/schema', () => ({
     $inferInsert: {},
   },
   subscriptionStatusEnum: { enumValues: ['active', 'past_due', 'canceled', 'incomplete', 'incomplete_expired', 'trialing', 'unpaid', 'paused'] },
-  membershipTierEnum: { enumValues: ['basic', 'host', 'seller', 'organizer', 'steward'] },
+  membershipTierEnum: { enumValues: ['basic', 'host', 'seller', 'provider', 'organizer', 'steward', 'worker'] },
 }));
 
 vi.mock('@/lib/integrations/stripe', () => ({
@@ -129,13 +129,15 @@ function chainResult(result: unknown) {
 // ---------------------------------------------------------------------------
 
 describe('billing – MEMBERSHIP_TIERS', () => {
-  it('has five tiers with correct names', () => {
-    expect(Object.keys(MEMBERSHIP_TIERS)).toEqual(['basic', 'host', 'seller', 'organizer', 'steward']);
+  it('has seven tiers with correct names', () => {
+    expect(Object.keys(MEMBERSHIP_TIERS)).toEqual(['basic', 'host', 'seller', 'provider', 'organizer', 'steward', 'worker']);
     expect(MEMBERSHIP_TIERS.basic.name).toBe('Basic');
     expect(MEMBERSHIP_TIERS.host.name).toBe('Host');
     expect(MEMBERSHIP_TIERS.seller.name).toBe('Seller');
+    expect(MEMBERSHIP_TIERS.provider.name).toBe('Provider');
     expect(MEMBERSHIP_TIERS.organizer.name).toBe('Organizer');
     expect(MEMBERSHIP_TIERS.steward.name).toBe('Steward');
+    expect(MEMBERSHIP_TIERS.worker.name).toBe('Worker');
   });
 
   it('loads price IDs from environment variables', () => {
@@ -150,15 +152,15 @@ describe('billing – MEMBERSHIP_TIERS', () => {
 
 describe('billing – TIER_HIERARCHY', () => {
   it('orders tiers from lowest to highest', () => {
-    expect(TIER_HIERARCHY).toEqual(['basic', 'host', 'seller', 'organizer', 'steward']);
+    expect(TIER_HIERARCHY).toEqual(['basic', 'host', 'seller', 'provider', 'organizer', 'steward', 'worker']);
   });
 
   it('basic has the lowest index', () => {
     expect(TIER_HIERARCHY.indexOf('basic')).toBe(0);
   });
 
-  it('steward has the highest index', () => {
-    expect(TIER_HIERARCHY.indexOf('steward')).toBe(4);
+  it('worker has the highest index', () => {
+    expect(TIER_HIERARCHY.indexOf('worker')).toBe(6);
   });
 });
 
@@ -260,8 +262,8 @@ describe('billing – hasEntitlement', () => {
     expect(result).toBe(false);
   });
 
-  it('steward includes all lower tier entitlements', async () => {
-    const mockSub = { membershipTier: 'steward', status: 'active' };
+  it('the highest tier includes all lower tier entitlements', async () => {
+    const mockSub = { membershipTier: 'worker', status: 'active' };
 
     for (const tier of TIER_HIERARCHY) {
       vi.clearAllMocks();

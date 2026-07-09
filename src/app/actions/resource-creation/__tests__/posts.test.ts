@@ -35,8 +35,9 @@ vi.mock("@/lib/rate-limit", () => ({
   },
 }));
 
+// The paid inline-offering gate now derives capability from the active
+// subscription tier (hasCapability → getActiveSubscription).
 vi.mock("@/lib/billing", () => ({
-  hasEntitlement: vi.fn().mockResolvedValue(true),
   getActiveSubscription: vi.fn().mockResolvedValue(null),
 }));
 
@@ -60,7 +61,7 @@ vi.mock("@/lib/queries/agents", () => ({
 
 // Import AFTER mocks
 import { auth } from "@/auth";
-import { hasEntitlement } from "@/lib/billing";
+import { getActiveSubscription } from "@/lib/billing";
 import { rateLimit } from "@/lib/rate-limit";
 import { createPostResource, createPostCommerceResource } from "../posts";
 
@@ -314,11 +315,12 @@ describe("post creation actions", () => {
         expect(result.resourceId).toBeDefined();
       }));
 
-    it("returns SUBSCRIPTION_REQUIRED for paid inline offering without seller tier", () =>
+    it("returns SUBSCRIPTION_REQUIRED for paid inline offering when the tier lacks sell_offerings (Host)", () =>
       withTestTransaction(async (db) => {
         const user = await createTestAgent(db);
         vi.mocked(auth).mockResolvedValue(mockAuthSession(user.id));
-        vi.mocked(hasEntitlement).mockResolvedValueOnce(false);
+        // A Host has sell_tickets but NOT sell_offerings — must fail the gate.
+        vi.mocked(getActiveSubscription).mockResolvedValueOnce({ membershipTier: "host" } as never);
 
         const result = await createPostCommerceResource({
           content: "Selling something",

@@ -13,7 +13,7 @@ import {
 } from "@/db/schema";
 import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { and, eq, sql } from "drizzle-orm";
-import { hasEntitlement } from "@/lib/billing";
+import { hasCapability } from "@/lib/entitlements";
 import { embedResource, scheduleEmbedding } from "@/lib/ai";
 import { syncMurmurationsProfilesForActor } from "@/lib/murmurations";
 
@@ -181,17 +181,19 @@ export async function updateResource(input: UpdateResourceInput): Promise<Action
           });
           const hasPaidTicket = ticketTypes.some((ticket) => ticket.priceCents > 0);
 
-          // Gate paid tickets behind host membership - return error code so UI can prompt signup.
+          // Gate paid tickets behind the sell_tickets capability (Host / Provider
+          // / Organization / Steward / Worker — NOT Seller). Return error code so
+          // UI can prompt signup.
           if (hasPaidTicket) {
-            const canSellTickets = await hasEntitlement(userId, "host");
+            const canSellTickets = await hasCapability(userId, "sell_tickets");
             if (!canSellTickets) {
               return {
                 success: true,
-                message: "Event updated, but paid tickets require a Host membership or higher.",
+                message: "Event updated, but paid tickets require a Host, Provider, or Organization membership.",
                 resourceId: input.resourceId,
                 error: {
                   code: "SUBSCRIPTION_REQUIRED",
-                  details: "Subscribe to Host (or higher) to sell event tickets.",
+                  details: "Subscribe to Host, Provider, or Organization to sell event tickets.",
                   requiredTier: "host",
                 },
               } as ActionResult;

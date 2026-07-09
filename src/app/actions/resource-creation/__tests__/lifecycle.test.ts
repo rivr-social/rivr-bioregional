@@ -39,8 +39,9 @@ vi.mock("@/lib/rate-limit", () => ({
   },
 }));
 
+// The paid-ticket gate on event updates now derives capability from the active
+// subscription tier (hasCapability → getActiveSubscription).
 vi.mock("@/lib/billing", () => ({
-  hasEntitlement: vi.fn().mockResolvedValue(true),
   getActiveSubscription: vi.fn().mockResolvedValue(null),
 }));
 
@@ -64,6 +65,7 @@ vi.mock("@/lib/queries/agents", () => ({
 
 // Import AFTER mocks
 import { auth } from "@/auth";
+import { getActiveSubscription } from "@/lib/billing";
 import { rateLimit } from "@/lib/rate-limit";
 import {
   updateResource,
@@ -202,6 +204,28 @@ describe("lifecycle actions", () => {
         expect(meta.existing).toBe("value");
         expect(meta.keep).toBe("this");
         expect(meta.newField).toBe("added");
+      }));
+
+    it("flags SUBSCRIPTION_REQUIRED when adding paid tickets on a tier lacking sell_tickets (Seller)", () =>
+      withTestTransaction(async (db) => {
+        const user = await createTestAgent(db);
+        const resource = await createTestResource(db, user.id, {
+          type: "event" as never,
+          metadata: { resourceKind: "event" },
+        });
+        vi.mocked(auth).mockResolvedValue(mockAuthSession(user.id));
+        // A Seller has sell_offerings but NOT sell_tickets — must fail the gate.
+        vi.mocked(getActiveSubscription).mockResolvedValueOnce({ membershipTier: "seller" } as never);
+
+        const result = await updateResource({
+          resourceId: resource.id,
+          metadataPatch: { ticketTypes: [{ name: "General Admission", price: 25 }] },
+        });
+
+        // The row is updated, but the paid-ticket capability gate reports back.
+        expect(result.success).toBe(true);
+        expect(result.error?.code).toBe("SUBSCRIPTION_REQUIRED");
+        expect(result.error?.requiredTier).toBe("host");
       }));
   });
 

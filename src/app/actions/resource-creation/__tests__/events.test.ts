@@ -34,8 +34,9 @@ vi.mock("@/lib/rate-limit", () => ({
   },
 }));
 
+// The paid-ticket gate now derives capability from the active subscription tier
+// (hasCapability → getActiveSubscription), so drive it via getActiveSubscription.
 vi.mock("@/lib/billing", () => ({
-  hasEntitlement: vi.fn().mockResolvedValue(true),
   getActiveSubscription: vi.fn().mockResolvedValue(null),
 }));
 
@@ -59,7 +60,7 @@ vi.mock("@/lib/queries/agents", () => ({
 
 // Import AFTER mocks
 import { auth } from "@/auth";
-import { hasEntitlement } from "@/lib/billing";
+import { getActiveSubscription } from "@/lib/billing";
 import { createEventResource } from "../events";
 
 // =============================================================================
@@ -208,11 +209,12 @@ describe("event creation actions", () => {
         expect(result.resourceId).toBeDefined();
       }));
 
-    it("returns SUBSCRIPTION_REQUIRED for paid tickets without host tier", () =>
+    it("returns SUBSCRIPTION_REQUIRED for paid tickets when the tier lacks sell_tickets (Seller)", () =>
       withTestTransaction(async (db) => {
         const user = await createTestAgent(db);
         vi.mocked(auth).mockResolvedValue(mockAuthSession(user.id));
-        vi.mocked(hasEntitlement).mockResolvedValueOnce(false);
+        // A Seller has sell_offerings but NOT sell_tickets — must fail the gate.
+        vi.mocked(getActiveSubscription).mockResolvedValueOnce({ membershipTier: "seller" } as never);
 
         const result = await createEventResource({
           ...VALID_EVENT_INPUT,
@@ -222,6 +224,22 @@ describe("event creation actions", () => {
         expect(result.success).toBe(false);
         expect(result.error?.code).toBe("SUBSCRIPTION_REQUIRED");
         expect(result.error?.requiredTier).toBe("host");
+      }));
+
+    it("allows paid tickets when the tier grants sell_tickets (Provider)", () =>
+      withTestTransaction(async (db) => {
+        const user = await createTestAgent(db);
+        vi.mocked(auth).mockResolvedValue(mockAuthSession(user.id));
+        // Provider holds both sell_tickets and sell_offerings.
+        vi.mocked(getActiveSubscription).mockResolvedValueOnce({ membershipTier: "provider" } as never);
+
+        const result = await createEventResource({
+          ...VALID_EVENT_INPUT,
+          price: 25,
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.resourceId).toBeDefined();
       }));
 
     it("sets visibility to private when scoped to groups and not global", () =>

@@ -34,8 +34,9 @@ vi.mock("@/lib/rate-limit", () => ({
   },
 }));
 
+// The paid-offering gate now derives capability from the active subscription
+// tier (hasCapability → getActiveSubscription), so drive it via that.
 vi.mock("@/lib/billing", () => ({
-  hasEntitlement: vi.fn().mockResolvedValue(true),
   getActiveSubscription: vi.fn().mockResolvedValue(null),
 }));
 
@@ -60,7 +61,7 @@ vi.mock("@/lib/queries/agents", () => ({
 // Import AFTER mocks
 import { auth } from "@/auth";
 import { rateLimit } from "@/lib/rate-limit";
-import { hasEntitlement } from "@/lib/billing";
+import { getActiveSubscription } from "@/lib/billing";
 import { createOfferingResource, createMarketplaceListingResource } from "../offerings";
 import { dollarsToCents } from "../types";
 
@@ -211,11 +212,12 @@ describe("offering creation actions", () => {
         expect(result.error?.code).toBe("FORBIDDEN");
       }));
 
-    it("returns SUBSCRIPTION_REQUIRED for paid offerings without seller tier", () =>
+    it("returns SUBSCRIPTION_REQUIRED for paid offerings when the tier lacks sell_offerings (Host)", () =>
       withTestTransaction(async (db) => {
         const user = await createTestAgent(db);
         vi.mocked(auth).mockResolvedValue(mockAuthSession(user.id));
-        vi.mocked(hasEntitlement).mockResolvedValueOnce(false);
+        // A Host has sell_tickets but NOT sell_offerings — must fail the gate.
+        vi.mocked(getActiveSubscription).mockResolvedValueOnce({ membershipTier: "host" } as never);
 
         const result = await createOfferingResource({
           ...VALID_OFFERING_INPUT,
@@ -329,11 +331,11 @@ describe("offering creation actions", () => {
         expect(result.error?.code).toBe("UNAUTHENTICATED");
       }));
 
-    it("returns SUBSCRIPTION_REQUIRED for paid listings without seller tier", () =>
+    it("returns SUBSCRIPTION_REQUIRED for paid listings when the tier lacks sell_offerings (Host)", () =>
       withTestTransaction(async (db) => {
         const user = await createTestAgent(db);
         vi.mocked(auth).mockResolvedValue(mockAuthSession(user.id));
-        vi.mocked(hasEntitlement).mockResolvedValueOnce(false);
+        vi.mocked(getActiveSubscription).mockResolvedValueOnce({ membershipTier: "host" } as never);
 
         const result = await createMarketplaceListingResource(VALID_LISTING_INPUT);
 
@@ -342,10 +344,11 @@ describe("offering creation actions", () => {
         expect(result.error?.requiredTier).toBe("seller");
       }));
 
-    it("creates a listing when input is valid and user has seller tier", () =>
+    it("creates a listing when input is valid and the tier grants sell_offerings (Seller)", () =>
       withTestTransaction(async (db) => {
         const user = await createTestAgent(db);
         vi.mocked(auth).mockResolvedValue(mockAuthSession(user.id));
+        vi.mocked(getActiveSubscription).mockResolvedValueOnce({ membershipTier: "seller" } as never);
 
         const result = await createMarketplaceListingResource(VALID_LISTING_INPUT);
 
