@@ -13,7 +13,7 @@ import {
   createLoginLink,
 } from '@/lib/stripe-connect';
 import { updateFacade, emitDomainEvent, EVENT_TYPES } from '@/lib/federation';
-import { getCurrentUserId, resolveManagedWalletTarget } from './helpers';
+import { getCurrentUserId, getCurrentUserIdForWrite, resolveManagedWalletTarget } from './helpers';
 import { isPositiveInteger } from './types';
 
 export async function releaseTestConnectBalanceToWalletInternal(
@@ -113,7 +113,10 @@ export async function setupConnectAccountAction(
   url?: string;
   error?: string;
 }> {
-  const currentUserId = await getCurrentUserId();
+  // Write path: creating a Connect account + persisting wallet metadata is
+  // FK-keyed on the local agent, so a first-contact federated member must be
+  // projected before `resolveManagedWalletTarget` provisions their wallet.
+  const currentUserId = await getCurrentUserIdForWrite();
   if (!currentUserId) {
     return { success: false, error: 'You must be logged in to set up payments.' };
   }
@@ -351,7 +354,9 @@ export async function requestPayoutAction(
   speed: 'standard' | 'instant' = 'standard',
   ownerId?: string
 ): Promise<{ success: boolean; payoutId?: string; error?: string }> {
-  const currentUserId = await getCurrentUserId();
+  // Write path: payout records a `walletTransactions` row keyed on the local
+  // agent's treasury wallet, so project a first-contact federated payee first.
+  const currentUserId = await getCurrentUserIdForWrite();
   if (!currentUserId) {
     return { success: false, error: 'You must be logged in.' };
   }

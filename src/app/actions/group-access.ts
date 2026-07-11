@@ -5,11 +5,14 @@
  * @description Exports actions to challenge access with a password, renew membership,
  * revoke membership, and check active membership state. Membership is represented by
  * ledger `join`/`leave` entries with expiration semantics.
- * @dependencies `@/auth`, `@/db`, `@/db/schema`, `@/lib/rate-limit`,
- * `@node-rs/bcrypt`, `next/headers`, `drizzle-orm`
+ * @dependencies `@/lib/auth/get-session`, `@/lib/federation/resolution`,
+ * `@/lib/federation/actor-projection`, `@/db`, `@/db/schema`,
+ * `@/lib/rate-limit`, `@node-rs/bcrypt`, `next/headers`, `drizzle-orm`
  */
 
-import { auth } from "@/auth";
+import { getSession } from "@/lib/auth/get-session";
+import { resolveLocalActorId } from "@/lib/federation/resolution";
+import { ensureLocalActorAgent } from "@/lib/federation/actor-projection";
 import { db } from "@/db";
 import { agents, ledger } from "@/db/schema";
 import type { NewLedgerEntry } from "@/db/schema";
@@ -74,6 +77,38 @@ type JoinRequestListResult = {
 };
 
 // =============================================================================
+// Actor resolution
+// =============================================================================
+
+/**
+ * Unified-session actor resolution for group-access membership actions.
+ *
+ * Federated remote-viewer members (SSO'd from their home instance, no local
+ * NextAuth JWT) join/renew on sovereigns too — plain `auth()` returned null
+ * and locked them out entirely (2026-07-11 federated-principal sweep, mirrors
+ * group c0ed020). Federated ids carry the actor's HOME id, normalized here to
+ * THIS instance's local agent via `resolveLocalActorId`.
+ *
+ * Enrollment WRITES pass `ensure: true` so a first-contact federated member
+ * gets a projected private local `agents` mirror before the actor-keyed
+ * `ledger.subject_id` FK write (otherwise a free "Join Group" silently
+ * no-op'd). Projection is a no-op for local members and anyone already
+ * projected; read-only membership probes only normalize the id.
+ */
+async function resolveGroupAccessActorId(options?: { ensure?: boolean }): Promise<string | null> {
+  const session = await getSession();
+  if (!session?.user?.id) return null;
+  if (session.user.authMethod === "federated") {
+    const localActorId = await resolveLocalActorId(session.user.id);
+    if (options?.ensure) {
+      await ensureLocalActorAgent(localActorId);
+    }
+    return localActorId;
+  }
+  return session.user.id;
+}
+
+// =============================================================================
 // Server actions
 // =============================================================================
 
@@ -97,8 +132,10 @@ export async function challengeGroupAccess(
   groupId: string,
   password: string
 ): Promise<GroupAccessResult> {
-  const session = await auth();
-  if (!session?.user?.id) {
+  // Write path: grants membership via an actor-keyed `ledger.subject_id` FK, so
+  // project a first-contact federated member before the insert.
+  const actorId = await resolveGroupAccessActorId({ ensure: true });
+  if (!actorId) {
     return { success: false, error: "Authentication required." };
   }
 
@@ -109,8 +146,6 @@ export async function challengeGroupAccess(
   if (!password || password.length === 0) {
     return { success: false, error: "Password is required." };
   }
-
-  const actorId = session.user.id;
 
   const facadeResult = await updateFacade.execute(
     {
@@ -239,8 +274,10 @@ export async function revokeGroupMembership(
   groupId: string,
   memberId: string
 ): Promise<GroupAccessResult> {
-  const session = await auth();
-  if (!session?.user?.id) {
+  // Write path: the "leave" audit row is keyed on the actor's `subject_id`, so
+  // project a first-contact federated actor before the insert.
+  const actorId = await resolveGroupAccessActorId({ ensure: true });
+  if (!actorId) {
     return { success: false, error: "Authentication required." };
   }
 
@@ -251,8 +288,6 @@ export async function revokeGroupMembership(
   if (!memberId || !UUID_RE.test(memberId)) {
     return { success: false, error: "Invalid member identifier." };
   }
-
-  const actorId = session.user.id;
 
   const facadeResult = await updateFacade.execute(
     {
@@ -337,16 +372,16 @@ export async function revokeGroupMembership(
 export async function renewGroupMembership(
   groupId: string
 ): Promise<GroupAccessResult> {
-  const session = await auth();
-  if (!session?.user?.id) {
+  // Write path: renewal inserts a fresh actor-keyed `join` grant, so project a
+  // first-contact federated member before the insert.
+  const actorId = await resolveGroupAccessActorId({ ensure: true });
+  if (!actorId) {
     return { success: false, error: "Authentication required." };
   }
 
   if (!groupId || !UUID_RE.test(groupId)) {
     return { success: false, error: "Invalid group identifier." };
   }
-
-  const actorId = session.user.id;
 
   const facadeResult = await updateFacade.execute(
     {
@@ -454,8 +489,8 @@ export async function renewGroupMembership(
 export async function checkGroupMembership(
   groupId: string
 ): Promise<MembershipCheckResult> {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const actorId = await resolveGroupAccessActorId();
+  if (!actorId) {
     return { isMember: false };
   }
 
@@ -463,7 +498,7 @@ export async function checkGroupMembership(
     return { isMember: false };
   }
 
-  const membership = await findActiveMembership(session.user.id, groupId);
+  const membership = await findActiveMembership(actorId, groupId);
   if (!membership) {
     return { isMember: false };
   }
@@ -484,8 +519,8 @@ export async function fetchGroupJoinRuntime(
     return { joined: true };
   }
 
-  const session = await auth();
-  if (!session?.user?.id || !groupId || !UUID_RE.test(groupId)) {
+  const actorId = await resolveGroupAccessActorId();
+  if (!actorId || !groupId || !UUID_RE.test(groupId)) {
     return { joined: false };
   }
 
@@ -494,7 +529,7 @@ export async function fetchGroupJoinRuntime(
     .from(ledger)
     .where(
       and(
-        eq(ledger.subjectId, session.user.id),
+        eq(ledger.subjectId, actorId),
         eq(ledger.objectId, groupId),
         eq(ledger.verb, "join"),
         sql`${ledger.metadata}->>'interactionType' = 'membership_request'`,
@@ -517,16 +552,17 @@ export async function requestGroupMembership(
     inviteToken?: string;
   }
 ): Promise<GroupAccessResult> {
-  const session = await auth();
-  if (!session?.user?.id) {
+  // Write path: self-join and approval-required requests both insert
+  // actor-keyed `ledger.subject_id` rows, so project a first-contact federated
+  // member before the insert (a free "Join Group" otherwise silently no-op'd).
+  const actorId = await resolveGroupAccessActorId({ ensure: true });
+  if (!actorId) {
     return { success: false, error: "Authentication required." };
   }
 
   if (!groupId || !UUID_RE.test(groupId)) {
     return { success: false, error: "Invalid group identifier." };
   }
-
-  const actorId = session.user.id;
 
   const facadeResult = await updateFacade.execute(
     {
@@ -699,8 +735,8 @@ export async function requestGroupMembership(
 export async function fetchGroupJoinRequests(
   groupId: string
 ): Promise<JoinRequestListResult> {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const actorId = await resolveGroupAccessActorId();
+  if (!actorId) {
     return { success: false, error: "Authentication required." };
   }
 
@@ -708,7 +744,7 @@ export async function fetchGroupJoinRequests(
     return { success: false, error: "Invalid group identifier." };
   }
 
-  const isAdmin = await resolveGroupAdminAuthorization(session.user.id, groupId);
+  const isAdmin = await resolveGroupAdminAuthorization(actorId, groupId);
   if (!isAdmin) {
     return { success: false, error: "Only group admins can view join requests." };
   }
@@ -769,16 +805,18 @@ export async function reviewGroupJoinRequest(
   decision: "approved" | "rejected",
   adminNotes?: string
 ): Promise<{ success: boolean; error?: string }> {
-  const session = await auth();
-  if (!session?.user?.id) {
+  // Admin action: the approved-member `join` row is keyed on the requester's
+  // id (already projected when they applied), and the actor only lands in
+  // metadata (`reviewedBy`) via an UPDATE — no actor FK write — so a plain
+  // normalize (no projection) suffices for the federated-admin id.
+  const actorId = await resolveGroupAccessActorId();
+  if (!actorId) {
     return { success: false, error: "Authentication required." };
   }
 
   if (!groupId || !UUID_RE.test(groupId) || !requestId || !UUID_RE.test(requestId)) {
     return { success: false, error: "Invalid request identifier." };
   }
-
-  const actorId = session.user.id;
 
   const facadeResult = await updateFacade.execute(
     {

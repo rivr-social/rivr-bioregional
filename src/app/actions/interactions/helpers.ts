@@ -1,17 +1,26 @@
 "use server";
 
 import { and, eq, sql } from "drizzle-orm";
-import { auth } from "@/auth";
 import { db } from "@/db";
 import { agents, ledger, resources } from "@/db/schema";
 import type { NewLedgerEntry } from "@/db/schema";
+import { getSession } from "@/lib/auth/get-session";
 import { getFederationExecutionContext } from "@/lib/federation/execution-context";
+import { resolveLocalActorId } from "@/lib/federation/resolution";
 
 import type { ActionResult, TargetType } from "./types";
 import { isUuid } from "./types";
 
 /**
  * Resolves the authenticated user ID from the active session.
+ *
+ * The returned id is always THIS instance's local agent id:
+ * - Federation execution context (peer-secret path) is pre-normalized before
+ *   dispatch and takes precedence.
+ * - A federated remote-viewer cookie carries the actor's HOME id verbatim, so
+ *   it is normalized here via `resolveLocalActorId` — plain `auth()` returned
+ *   null for these SSO'd viewers, silently blocking job-apply / RSVP.
+ * - NextAuth sessions are already local.
  */
 export async function getCurrentUserId() {
   const federationContext = getFederationExecutionContext();
@@ -19,8 +28,16 @@ export async function getCurrentUserId() {
     return federationContext.actorId;
   }
 
-  const session = await auth();
-  return session?.user?.id ?? null;
+  const session = await getSession();
+  if (!session?.user?.id) {
+    return null;
+  }
+
+  if (session.user.authMethod === "federated") {
+    return resolveLocalActorId(session.user.id);
+  }
+
+  return session.user.id;
 }
 
 /**
