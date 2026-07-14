@@ -16,7 +16,8 @@
  *
  * @module rings/[id]/page
  */
-import Link from "next/link"
+import { CanonicalLink } from "@/components/canonical-link"
+import { resolveEntityHref } from "@/lib/federation/entity-link"
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import { FolderKanban, Handshake } from "lucide-react"
@@ -354,7 +355,7 @@ export default async function RingPage({ params }: { params: Promise<{ id: strin
             <Card key={project.id}>
               <CardContent className="py-3 flex items-center justify-between gap-3">
                 <p className="font-medium inline-flex items-center gap-2"><Handshake className="h-4 w-4" />{project.name}</p>
-                <Link href={`/projects/${project.id}`} className="text-sm text-primary hover:underline">Open</Link>
+                <CanonicalLink href={resolveEntityHref(project.metadata, `/projects/${project.id}`, { globalFallback: false }).href} className="text-sm text-primary hover:underline">Open</CanonicalLink>
               </CardContent>
             </Card>
           ))}

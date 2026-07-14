@@ -75,6 +75,8 @@ interface MappedGroup {
   members: string[]
   geo: unknown
   modelUrl?: string
+  /** Canonical link target — local path or the group's sovereign-home URL. */
+  homeHref?: string
 }
 
 /** Shape of a mapped event after transforming SerializedAgent data */
@@ -522,6 +524,7 @@ export default function MapPage() {
     chapters: group.chapterTags || [],
     location: group.location,
     members: group.members || [],
+    homeHref: group.homeHref,
     geo: group.geo || geocodedGeo[group.id] || null,
     modelUrl: group.modelUrl,
   })), [hookGroups, geocodedGeo])
@@ -914,7 +917,9 @@ export default function MapPage() {
         image: group.avatar || "/placeholder.svg",
         tags: group.chapterTags || [],
         memberCount: Array.isArray(group.members) ? group.members.length : 0,
-        url: `/groups/${group.id}`,
+        // Canonical: local path or the group's stamped sovereign-home URL,
+        // rendered via `MapCard`'s `CanonicalLink`.
+        url: group.homeHref ?? `/groups/${group.id}`,
         modelUrl: group.modelUrl,
         createdAt: fallbackIso,
       }

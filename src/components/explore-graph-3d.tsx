@@ -328,7 +328,9 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
         id: group.id,
         label: group.name || "Unknown Group",
         type: NODE_TYPE.GROUP,
-        href: `/groups/${group.id}`,
+        // Canonical: local `/groups/[id]` or the group's stamped sovereign-home
+        // URL (federated projection). Rendered via `MapCard`'s `CanonicalLink`.
+        href: group.homeHref ?? `/groups/${group.id}`,
         modelUrl: group.modelUrl,
       })
     }
@@ -496,7 +498,8 @@ export function ExploreGraph3D({ selectedChapter, searchQuery = "", ledgerFilter
                   id: group.id,
                   label: group.name || "Subgroup",
                   type: NODE_TYPE.GROUP,
-                  href: `/groups/${group.id}`,
+                  // Canonical: local path or stamped sovereign-home URL.
+                  href: group.homeHref ?? `/groups/${group.id}`,
                 })
               }
               newLinks.push({ id: makeLinkId(node.id, group.id), source: node.id, target: group.id })

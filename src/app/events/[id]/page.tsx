@@ -1,4 +1,5 @@
-import Link from "next/link"
+import { CanonicalLink } from "@/components/canonical-link"
+import { resolveEntityHref } from "@/lib/federation/entity-link"
 import Image from "next/image"
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
@@ -228,8 +229,8 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
           {organizer ? (
             <div className="bg-background rounded-lg border p-4">
               <p className="text-sm text-muted-foreground mb-2">Presented by</p>
-              <Link
-                href={`/profile/${organizer.metadata?.username || organizer.id}`}
+              <CanonicalLink
+                href={resolveEntityHref(organizer.metadata, `/profile/${organizer.metadata?.username || organizer.id}`, { globalFallback: false }).href}
                 className="flex items-center gap-3 hover:opacity-80"
               >
                 <Avatar className="h-8 w-8">
@@ -240,7 +241,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
                   <AvatarFallback>{getInitials(organizer.name)}</AvatarFallback>
                 </Avatar>
                 <span className="font-medium">{organizer.name}</span>
-              </Link>
+              </CanonicalLink>
               {event.description ? (
                 <p className="text-sm text-muted-foreground mt-3">
                   {event.description.substring(0, 100)}
@@ -254,8 +255,8 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
           {resolvedCreator ? (
             <div className="bg-background rounded-lg border p-4">
               <p className="text-sm text-muted-foreground mb-2">Hosted By</p>
-              <Link
-                href={`/profile/${resolvedCreator.metadata?.username || resolvedCreator.id}`}
+              <CanonicalLink
+                href={resolveEntityHref(resolvedCreator.metadata, `/profile/${resolvedCreator.metadata?.username || resolvedCreator.id}`, { globalFallback: false }).href}
                 className="flex items-center gap-3 hover:opacity-80"
               >
                 <Avatar className="h-8 w-8">
@@ -266,7 +267,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ id
                   <AvatarFallback>{getInitials(resolvedCreator.name)}</AvatarFallback>
                 </Avatar>
                 <span className="font-medium">{resolvedCreator.name}</span>
-              </Link>
+              </CanonicalLink>
             </div>
           ) : null}
 

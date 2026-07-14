@@ -5,17 +5,21 @@
  * overlays.
  *
  * The card is intentionally a single navigational unit: the whole surface is a
- * `Link` to the entity's page (`item.url`), so clicking anywhere navigates. It
- * normalizes a heterogeneous entity (`event`/`group`/`post`/`offering`/`person`)
- * into one display shape and mirrors the markup that previously lived inline in
- * `app/(main)/map/page.tsx`, so map rendering is unchanged.
+ * `CanonicalLink` to the entity's page (`item.url`), so clicking anywhere
+ * navigates. `item.url` may be a canonical sovereign-home URL (a federated graph
+ * node stamped with `homeHref`), so `CanonicalLink` renders a cross-origin target
+ * as a plain `<a>` (no Next cross-origin RSC prefetch) and a local path as a Next
+ * `<Link>`. It normalizes a heterogeneous entity
+ * (`event`/`group`/`post`/`offering`/`person`) into one display shape and mirrors
+ * the markup that previously lived inline in `app/(main)/map/page.tsx`, so map
+ * rendering is unchanged.
  *
  * When `onClose` is provided the card renders a dismiss affordance (used by the
  * graph overlays, which open a card on node click and let the user close it
  * without leaving the graph).
  */
 
-import Link from "next/link"
+import { CanonicalLink } from "@/components/canonical-link"
 import Image from "next/image"
 import { Calendar, MapPin, Users, X } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -66,7 +70,7 @@ interface MapCardProps {
 
 export function MapCard({ item, className, onMouseEnter, onMouseLeave, onClose }: MapCardProps) {
   return (
-    <Link
+    <CanonicalLink
       href={item.url}
       className={cn(
         "relative min-w-[200px] max-w-[240px] md:min-w-[280px] md:max-w-[320px] rounded-md border bg-card hover:border-primary transition-colors overflow-hidden flex shrink-0 shadow",
@@ -128,6 +132,6 @@ export function MapCard({ item, className, onMouseEnter, onMouseLeave, onClose }
           <X className="h-3.5 w-3.5" />
         </button>
       ) : null}
-    </Link>
+    </CanonicalLink>
   )
 }
