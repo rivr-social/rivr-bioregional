@@ -37,6 +37,8 @@ import type {
 import { GroupType } from "@/lib/types";
 import type { AgentType } from "@/db/schema";
 import { readGroupMembershipPlans } from "@/lib/group-memberships";
+import { resolveEntityHref } from "@/lib/federation/entity-link";
+import { getInstanceConfig } from "@/lib/federation/instance-config";
 
 /**
  * Sanitize a string into a URL-safe slug.
@@ -211,6 +213,69 @@ function normalizeGroupType(rawGroupType: unknown, fallbackAgentType: string): G
   }
 }
 
+/** This instance's own base URL, for the self-host loop guard in link resolution. */
+function selfBaseUrl(): string | null {
+  try {
+    return getInstanceConfig().baseUrl;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Local route for an entity on THIS instance, BEFORE canonical-home resolution.
+ * Person → `/profile/<username|id>`; ring/family → their subtype route;
+ * everything else group-class → `/groups/<id>`. (A place-typed group linked to
+ * `/groups/<id>` is redirected to its `/basins|/locales` page by that route's
+ * own guard — the helper complements it, it does not need to duplicate it.)
+ */
+function agentLocalPath(agent: SerializedAgent): string {
+  if (agent.type === "person") {
+    const username = typeof agent.metadata?.username === "string"
+      ? agent.metadata.username.trim()
+      : "";
+    return `/profile/${username || agent.id}`;
+  }
+
+  if (agent.type === "project") return `/projects/${agent.id}`;
+
+  const groupType = normalizeGroupType(
+    agent.metadata?.groupType,
+    String(agent.type ?? "").toLowerCase()
+  );
+  if (groupType === GroupType.Ring) return `/rings/${agent.id}`;
+  if (groupType === GroupType.Family) return `/families/${agent.id}`;
+  return `/groups/${agent.id}`;
+}
+
+/**
+ * Canonical href for an entity: the local route when the entity is homed on
+ * (and renderable by) THIS instance, otherwise the absolute URL on the entity's
+ * federated HOME instance. See `resolveEntityHref`.
+ *
+ * @param globalFallback When the entity carries NO federated home stamp, route
+ *   the local path through the global aggregator instead of returning it
+ *   verbatim. This bioregional app has local routes for every entity class it
+ *   links to (`/profile`, `/groups`, `/rings`, `/families`, `/projects`), so the
+ *   default is `false`: an unstamped entity keeps its local path while a
+ *   federated projection routes to its sovereign home. Pass `true` only for a
+ *   class this instance genuinely cannot render locally.
+ */
+function agentCanonicalHref(agent: SerializedAgent, globalFallback = false): string {
+  return resolveEntityHref(agent.metadata, agentLocalPath(agent), {
+    selfBaseUrl: selfBaseUrl(),
+    globalFallback,
+  }).href;
+}
+
+/**
+ * Profile href for a person agent — canonical (local path for a locally-homed
+ * person, absolute home URL for a federated/remote person).
+ */
+function agentProfilePath(agent: SerializedAgent): string {
+  return agentCanonicalHref(agent, false);
+}
+
 /**
  * Converts a graph person agent into the frontend `User` model.
  *
@@ -230,7 +295,9 @@ export function agentToUser(agent: SerializedAgent): User {
     id: agent.id,
     name: agent.name,
     username: username || slugify(agent.name),
-    profileHref: `/profile/${username || agent.id}`,
+    // Canonical profile href: local path for a locally-homed person, absolute
+    // home URL for a federated/remote projection. See `agentCanonicalHref`.
+    profileHref: agentProfilePath(agent),
     email: agent.email ?? undefined,
     bio: agent.description ?? (meta.bio as string) ?? undefined,
     avatar: agent.image ?? "/placeholder-user.jpg",
@@ -280,6 +347,10 @@ export function agentToGroup(agent: SerializedAgent): Group {
   return {
     id: agent.id,
     name: agent.name,
+    // Canonical link target: local `/groups/<id>` for a locally-homed group,
+    // absolute URL on the group's sovereign home for a federated projection.
+    // See `agentCanonicalHref`.
+    homeHref: agentCanonicalHref(agent),
     description: agent.description ?? "",
     image: agent.image ?? "/placeholder-event.jpg",
     avatar: agent.image ?? "/placeholder-event.jpg",
@@ -397,6 +468,10 @@ export function agentToProject(agent: SerializedAgent) {
   return {
     id: agent.id,
     name: agent.name,
+    // Canonical link target: local `/projects/<id>` for a locally-homed
+    // project, absolute sovereign-home URL for a federated projection. See
+    // `agentCanonicalHref`.
+    homeHref: agentCanonicalHref(agent),
     description: agent.description ?? "",
     type: "project" as const,
     image: agent.image ?? "/placeholder-project.jpg",
@@ -425,18 +500,17 @@ export function resourceToMarketplaceListing(
   ownerAgent?: SerializedAgent
 ): MarketplaceListing {
   const meta = resource.metadata ?? {};
-  const rawGroupType = String(ownerAgent?.metadata?.groupType ?? "").toLowerCase();
   const ownerIsGroup = Boolean(
     ownerAgent && ownerAgent.type !== "person"
   );
+  // Canonical owner link. `agentLocalPath` already resolves the subtype route
+  // (person → `/profile`, ring → `/rings`, family → `/families`, else group →
+  // `/groups`); `agentCanonicalHref` then routes a federated projection to its
+  // sovereign home instead of a bare local path that would render the wrong
+  // record. All owner classes are locally renderable here, so globalFallback
+  // stays false (unlike the person app, which has no local `/groups` route).
   const ownerPath = ownerAgent
-    ? rawGroupType === "ring"
-      ? `/rings/${ownerAgent.id}`
-      : rawGroupType === "family"
-        ? `/families/${ownerAgent.id}`
-        : ownerIsGroup
-          ? `/groups/${ownerAgent.id}`
-          : `/profile/${(ownerAgent.metadata?.username as string) || ownerAgent.id}`
+    ? agentCanonicalHref(ownerAgent)
     : `/profile/${resource.ownerId}`;
 
   const seller: User = ownerAgent
@@ -690,6 +764,10 @@ export function agentToRing(agent: SerializedAgent): Ring {
   return {
     id: agent.id,
     name: agent.name,
+    // Canonical link target: local `/rings/<id>` for a locally-homed ring,
+    // absolute sovereign-home URL for a federated projection. See
+    // `agentCanonicalHref`.
+    homeHref: agentCanonicalHref(agent),
     description: agent.description ?? "",
     image: agent.image ?? "/placeholder.svg",
     memberCount: (meta.memberCount as number) ?? 0,
@@ -733,6 +811,10 @@ export function agentToFamily(agent: SerializedAgent): Family {
   return {
     id: agent.id,
     name: agent.name,
+    // Canonical link target: local `/families/<id>` for a locally-homed family,
+    // absolute sovereign-home URL for a federated projection. See
+    // `agentCanonicalHref`.
+    homeHref: agentCanonicalHref(agent),
     description: agent.description ?? "",
     image: agent.image ?? "/placeholder.svg",
     memberCount: (meta.memberCount as number) ?? 0,
