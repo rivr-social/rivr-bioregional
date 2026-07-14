@@ -19,6 +19,8 @@
  * @module projects/[id]/page
  */
 import Link from "next/link"
+import { CanonicalLink } from "@/components/canonical-link"
+import { resolveEntityHref } from "@/lib/federation/entity-link"
 import Image from "next/image"
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
@@ -277,8 +279,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
             <CardTitle className="text-lg">Project Lead</CardTitle>
           </CardHeader>
           <CardContent>
-            <Link
-              href={`/profile/${(owner.metadata?.username as string) || owner.id}`}
+            <CanonicalLink
+              href={resolveEntityHref(owner.metadata, `/profile/${(owner.metadata?.username as string) || owner.id}`, { globalFallback: false }).href}
               className="inline-flex items-center gap-3 hover:opacity-80 transition-opacity"
             >
               <Image
@@ -292,7 +294,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
                 <p className="text-sm font-medium leading-none">{owner.name}</p>
                 <p className="text-xs text-muted-foreground mt-1">Project lead</p>
               </div>
-            </Link>
+            </CanonicalLink>
           </CardContent>
         </Card>
       ) : null}
@@ -311,9 +313,9 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
               {visibleMembers.map((member) => (
-                <Link
+                <CanonicalLink
                   key={member.id}
-                  href={`/profile/${(member.metadata?.username as string) || member.id}`}
+                  href={resolveEntityHref(member.metadata, `/profile/${(member.metadata?.username as string) || member.id}`, { globalFallback: false }).href}
                   className="flex flex-col items-center gap-2 hover:opacity-80 transition-opacity"
                 >
                   <Image
@@ -324,7 +326,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
                     className="rounded-full object-cover"
                   />
                   <span className="text-xs text-center truncate max-w-[80px]">{member.name}</span>
-                </Link>
+                </CanonicalLink>
               ))}
               {overflowCount > 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2">

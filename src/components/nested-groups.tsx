@@ -16,7 +16,7 @@ import { Layers, ChevronRight, Users, FolderPlus } from "lucide-react"
 import { fetchAgent, fetchAgentChildren } from "@/app/actions/graph"
 import { agentToGroup } from "@/lib/graph-adapters"
 import type { Group } from "@/lib/types"
-import Link from "next/link"
+import { CanonicalLink } from "@/components/canonical-link"
 
 interface NestedGroupsProps {
   parentGroupId: string
@@ -111,7 +111,7 @@ export function NestedGroups({ parentGroupId, isCreator, isAdmin }: NestedGroups
         {childGroups.length > 0 ? (
           <div className="space-y-3">
             {childGroups.map((group) => (
-              <Link href={`/groups/${group.id}`} key={group.id}>
+              <CanonicalLink href={group.homeHref ?? `/groups/${group.id}`} key={group.id}>
                 <div className="flex items-center justify-between p-3 rounded-md border hover:bg-muted/50 cursor-pointer">
                   <div className="flex items-center">
                     <Avatar className="h-10 w-10 mr-3">
@@ -128,7 +128,7 @@ export function NestedGroups({ parentGroupId, isCreator, isAdmin }: NestedGroups
                   </div>
                   <ChevronRight className="h-5 w-5 text-muted-foreground" />
                 </div>
-              </Link>
+              </CanonicalLink>
             ))}
           </div>
         ) : (

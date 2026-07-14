@@ -7,7 +7,7 @@ import { MapPin, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TypeBadge } from "@/components/type-badge"
 import { TypeIcon } from "@/components/type-icon"
-import Link from "next/link"
+import { CanonicalLink } from "@/components/canonical-link"
 import type { Family, Ring, User } from "@/lib/types"
 
 /**
@@ -118,12 +118,9 @@ export function FamilyFeed({
 
   const getMembersFunction = getMembers || defaultGetMembers
 
-  // Get ring name for a family
-  const getRingName = (parentRingId: string) => {
-    const ringsToUse = rings ?? []
-    const ring = ringsToUse.find((r) => r.id === parentRingId)
-    return ring?.name || "Unknown Ring"
-  }
+  // Get the parent ring for a family (name + canonical link target).
+  const getParentRing = (parentRingId: string) => (rings ?? []).find((r) => r.id === parentRingId)
+  const getRingName = (parentRingId: string) => getParentRing(parentRingId)?.name || "Unknown Ring"
 
   return (
     <div className="space-y-4 mt-4">
@@ -133,6 +130,7 @@ export function FamilyFeed({
         const memberAvatars = getMembersFunction(family.members?.slice(0, 3) || [])
         const isJoined = joinedFamilies.includes(family.id)
         const ringName = getRingName(family.parentRingId)
+        const parentRingHref = getParentRing(family.parentRingId)?.homeHref ?? `/rings/${family.parentRingId}`
 
         return (
           <Card key={family.id} className="border shadow-sm">
@@ -144,14 +142,14 @@ export function FamilyFeed({
                     <AvatarFallback>{family.name.substring(0, 2)}</AvatarFallback>
                   </Avatar>
                   <div>
-                    <Link href={`/families/${family.id}`} className="text-xl font-bold hover:underline">
+                    <CanonicalLink href={family.homeHref ?? `/families/${family.id}`} className="text-xl font-bold hover:underline">
                       {family.name}
-                    </Link>
+                    </CanonicalLink>
                     <p className="text-sm text-muted-foreground">
                       Part of{" "}
-                      <Link href={`/rings/${family.parentRingId}`} className="text-purple-600 hover:underline">
+                      <CanonicalLink href={parentRingHref} className="text-purple-600 hover:underline">
                         {ringName}
-                      </Link>
+                      </CanonicalLink>
                     </p>
                   </div>
                 </div>

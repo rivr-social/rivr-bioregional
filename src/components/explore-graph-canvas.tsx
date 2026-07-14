@@ -298,7 +298,9 @@ export function ExploreGraphCanvas({ selectedChapter, searchQuery = "", ledgerFi
         id: group.id,
         label: group.name || "Unknown Group",
         type: NODE_TYPE.GROUP,
-        href: `/groups/${group.id}`,
+        // Canonical: local path or stamped sovereign-home URL (federated
+        // projection), matching the `person.profileHref` stamp above.
+        href: group.homeHref ?? `/groups/${group.id}`,
       })
     }
 
@@ -525,7 +527,8 @@ export function ExploreGraphCanvas({ selectedChapter, searchQuery = "", ledgerFi
                   id: group.id,
                   label: group.name || "Subgroup",
                   type: NODE_TYPE.GROUP,
-                  href: `/groups/${group.id}`,
+                  // Canonical: local path or stamped sovereign-home URL.
+                  href: group.homeHref ?? `/groups/${group.id}`,
                 })
               }
               newLinks.push({

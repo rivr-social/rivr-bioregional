@@ -19,7 +19,7 @@
 import { useState, useMemo } from "react"
 import dynamic from "next/dynamic"
 import Image from "next/image"
-import Link from "next/link"
+import { CanonicalLink } from "@/components/canonical-link"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -159,7 +159,8 @@ export default function ExplorePage() {
         author: `${group.memberCount} members`,
         likes: group.memberCount || 0,
         comments: 0,
-        href: `/groups/${group.id}`,
+        // Canonical: local path or the group's stamped sovereign-home URL.
+        href: group.homeHref ?? `/groups/${group.id}`,
         createdAt: group.createdAt || "",
       })
     })
@@ -207,7 +208,7 @@ export default function ExplorePage() {
           {gridItems.length > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-0.5">
               {gridItems.map((item) => (
-                <Link
+                <CanonicalLink
                   key={`${item.type}-${item.id}`}
                   href={item.href}
                   className="group relative aspect-square overflow-hidden bg-muted"
@@ -252,7 +253,7 @@ export default function ExplorePage() {
                       </span>
                     </div>
                   </div>
-                </Link>
+                </CanonicalLink>
               ))}
             </div>
           ) : (

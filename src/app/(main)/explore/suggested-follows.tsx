@@ -13,7 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import Link from "next/link"
+import { CanonicalLink } from "@/components/canonical-link"
+import { resolveEntityHref } from "@/lib/federation/entity-link"
 import { Users } from "lucide-react"
 import { fetchPeople } from "@/app/actions/graph"
 import { toggleFollowAgent, fetchFollowingIds } from "@/app/actions/interactions"
@@ -292,6 +293,9 @@ export function SuggestedFollows({ chapterId = "all" }: SuggestedFollowsProps) {
           <div className="space-y-4">
             {people.filter(matchesChapter).map((agent) => {
               const username = getUsername(agent)
+              // Canonical: local `/profile/<u>` (locally-homed) or the person's
+              // sovereign-home URL (federated projection carries a home stamp).
+              const profileHref = resolveEntityHref(agent.metadata, `/profile/${username}`, { globalFallback: false }).href
               const bio = getBio(agent)
               const isFollowed = followedIds.has(agent.id)
               const isPending = pendingIds.has(agent.id)
@@ -304,9 +308,9 @@ export function SuggestedFollows({ chapterId = "all" }: SuggestedFollowsProps) {
                       <AvatarFallback>{agent.name.substring(0, 2)}</AvatarFallback>
                     </Avatar>
                     <div>
-                      <Link href={`/profile/${username}`} className="font-medium hover:underline block">
+                      <CanonicalLink href={profileHref} className="font-medium hover:underline block">
                         {agent.name}
-                      </Link>
+                      </CanonicalLink>
                       {bio && <p className="text-xs text-muted-foreground">{bio}</p>}
                     </div>
                   </div>
