@@ -18,7 +18,7 @@
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import { Calendar } from "lucide-react"
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/get-session"
 import { fetchAgentFeed, fetchGroupDetail } from "@/app/actions/graph"
 import { agentToGroup, agentToUser, resourceToPost } from "@/lib/graph-adapters"
 import { buildGroupPageMetadata } from "@/lib/object-metadata"
@@ -70,7 +70,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
  */
 export default async function FamilyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const session = await auth()
+  // Unified session (cookie-aware) so an SSO-landed remote viewer (cookie-only,
+  // no NextAuth session) is recognized instead of being bounced to notFound(),
+  // and their family admin/manage affordances resolve correctly.
+  const session = await getSession()
   if (!session?.user?.id) notFound()
 
   // Fetch family detail and activity feed in parallel.

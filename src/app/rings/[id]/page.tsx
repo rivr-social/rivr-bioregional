@@ -20,7 +20,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import { FolderKanban, Handshake } from "lucide-react"
-import { auth } from "@/auth"
+import { getSession } from "@/lib/auth/get-session"
 import { fetchAgentFeed, fetchGroupDetail } from "@/app/actions/graph"
 import { agentToGroup, agentToUser, resourceToPost } from "@/lib/graph-adapters"
 import { buildGroupPageMetadata } from "@/lib/object-metadata"
@@ -64,10 +64,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 export default async function RingPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   // Fetch ring detail and activity feed in parallel to reduce server render latency.
+  // Unified session (cookie-aware) so an SSO-landed remote-viewer admin homed
+  // on another instance still resolves to their local actor and keeps their
+  // ring admin/manage affordances — bare auth() sees only NextAuth sessions.
   const [detail, activity, session] = await Promise.all([
     fetchGroupDetail(id),
     fetchAgentFeed(id, 60).catch(() => []),
-    auth(),
+    getSession(),
   ])
 
   // If the ring does not exist, render the segment's not-found boundary.
