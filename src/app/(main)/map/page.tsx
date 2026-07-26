@@ -1073,11 +1073,11 @@ export default function MapPage() {
 
   const setBioregionScope = useCallback((key: string, scope: LayerScope) => {
     setBioregionLayers((prev) => ({ ...prev, [key]: scope }))
-  }, [])
+  }, [setBioregionLayers])
 
   const toggleBioregionLabels = useCallback((key: string) => {
     setBioregionLabels((prev) => ({ ...prev, [key]: !prev[key] }))
-  }, [])
+  }, [setBioregionLabels])
 
   /**
    * Toggles a base map layer visibility flag.

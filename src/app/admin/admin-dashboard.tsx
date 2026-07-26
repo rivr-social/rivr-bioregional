@@ -3,7 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Shield, CheckSquare, Users, AlertCircle, CheckCircle, Clock } from "lucide-react"
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import type { JobShift, UserBadge } from "@/types/domain"
 
 interface AdminDashboardProps {
@@ -26,6 +26,10 @@ export function AdminDashboard({ jobShifts, badges, totalUsers, agentDisplayMap 
     totalBadges: 0,
     recentActivity: [] as { type: string; taskName: string; userName: string; timestamp: Date }[]
   })
+
+  const getAssigneeName = useCallback((userId: string) => {
+    return agentDisplayMap[userId]?.name ?? "Unknown User"
+  }, [agentDisplayMap])
 
   useEffect(() => {
     // Calculate dashboard statistics
@@ -74,12 +78,7 @@ export function AdminDashboard({ jobShifts, badges, totalUsers, agentDisplayMap 
       totalBadges: badges.length,
       recentActivity: recentActivity.slice(0, 5) // Show only the 5 most recent activities
     })
-  }, [jobShifts, badges, totalUsers])
-
-  /** Resolves a user ID to a display name using the agent display map from the DB. */
-  const getAssigneeName = (userId: string) => {
-    return agentDisplayMap[userId]?.name ?? "Unknown User"
-  }
+  }, [jobShifts, badges, totalUsers, getAssigneeName])
 
   /** Formats a Date into a human-readable relative time string (e.g., "3 hours ago"). */
   const formatTimeAgo = (date: Date) => {
