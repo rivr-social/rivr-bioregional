@@ -511,7 +511,7 @@ const FLOWS: Flow[] = [
     id: "billing",
     category: "Auth & Account",
     label: "Stripe subscriptions & billing",
-    description: "Membership tiers: host, seller, organizer, steward. Stripe checkout sessions, webhook processing, free trial support.",
+    description: "Membership tiers: host, seller, organizer, steward. Stripe checkout sessions, webhook processing.",
     objectRows: ["subscriptions (stripeCustomerId, tier, status)", "agents"],
     endpoints: ["/api/stripe/webhook"],
     functions: ["createCheckoutAction", "getSubscriptionStatusAction", "startFreeTrialAction"],
